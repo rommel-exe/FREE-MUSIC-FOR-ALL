@@ -1,0 +1,39 @@
+appId: com.freemusicplayer.app
+productName: Free Music Player
+directories:
+  output: release
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - node_modules/**/*
+extraResources:
+  - from: resources/
+    to: resources/
+publish:
+  provider: github
+  owner: rommel-exe
+  repo: free-music-player
+  releaseType: release
+  # If you fork or move to a different repo, update owner/repo above.
+  # Set GH_TOKEN env var when building for publish: GH_TOKEN=xxx npm run electron:build
+mac:
+  category: public.app-category.music
+  icon: resources/icons/icon.icns
+  target:
+    - dmg
+    - zip
+win:
+  icon: resources/icons/icon.ico
+  target:
+    - nsis
+    - portable
+linux:
+  icon: resources/icons
+  target:
+    - AppImage
+    - deb
+  category: Audio
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true

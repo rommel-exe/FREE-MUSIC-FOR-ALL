@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & Publish
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci
+
+      - name: Rebuild native modules
+        run: npm run rebuild:electron
+
+      - name: Build & publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run electron:build -- --publish always
+
+      - name: Upload artifacts (fallback if publish fails)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: free-music-player-release
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+            release/latest*.yml
+            release/latest*.yaml
+          if-no-files-found: ignore
