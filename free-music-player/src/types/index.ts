@@ -34,19 +34,6 @@ export interface QueueItem {
   addedAt: string;
 }
 
-export interface Download {
-  id: string;
-  trackId: string;
-  title: string;
-  artist: string;
-  progress: number;
-  status: 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled';
-  outputPath: string;
-  thumbnail: string;
-  speed: string;
-  eta: string;
-}
-
 export interface SearchResult {
   id: string;
   title: string;
@@ -57,44 +44,20 @@ export interface SearchResult {
   viewCount?: number;
 }
 
-export interface LyricsData {
-  plain?: string;
-  synced?: SyncedLyric[];
-}
-
-export interface SyncedLyric {
-  time: number;
-  text: string;
-}
-
-export interface Toast {
-  id: string;
-  message: string;
-  type: 'success' | 'error' | 'info';
-}
-
 export interface Settings {
-  downloadPath: string;
-  downloadFormat: 'mp3' | 'flac' | 'ogg' | 'm4a';
-  audioQuality: 'low' | 'medium' | 'high';
-  crossfadeDuration: number;
-  theme: 'dark' | 'light';
-  miniPlayerOnClose: boolean;
-  startupAction: 'none' | 'resume' | 'lastPlaylist';
-  equalizerPreset: string;
   volume: number;
+  theme: 'dark' | 'light';
+  [key: string]: string | number | boolean;
 }
 
-export interface SpotifyImportResult {
-  name: string;
-  description: string;
-  thumbnail: string;
-  tracks: { title: string; artist: string; album: string; duration: number }[];
-}
-
-export interface YouTubeImportResult {
-  name: string;
-  description: string;
-  thumbnail: string;
-  tracks: { title: string; artist: string; duration: number; videoId: string; thumbnail: string }[];
+/** ── Media Source ──────────────────────────────────────────────────── */
+export interface MediaSource {
+  /** Local HTTP proxy URL (same-origin, no CORS issues) */
+  audioUrl: string;
+  /** Unix timestamp (ms) when this source expires */
+  expiresAt: number;
+  /** Audio bitrate in kbps */
+  bitrate: number;
+  /** Original YouTube video ID */
+  videoId: string;
 }

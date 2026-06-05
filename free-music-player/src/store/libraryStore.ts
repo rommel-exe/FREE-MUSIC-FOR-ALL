@@ -1,11 +1,12 @@
 import { create } from 'zustand';
-import { Track } from '@/types';
+import { Track, Playlist } from '@/types';
 import { ipc } from '@/utils/ipc';
 
 interface LibraryState {
   tracks: Track[];
   favorites: Track[];
   recentlyPlayed: Track[];
+  playlists: Playlist[];
   searchQuery: string;
   sortBy: 'title' | 'artist' | 'album' | 'createdAt' | 'playCount';
   sortOrder: 'asc' | 'desc';
@@ -15,6 +16,7 @@ interface LibraryState {
   loadTracks: () => Promise<void>;
   loadFavorites: () => Promise<void>;
   loadRecentlyPlayed: () => Promise<void>;
+  loadPlaylists: () => Promise<void>;
   addTrack: (track: Partial<Track>) => Promise<void>;
   removeTrack: (id: string) => Promise<void>;
   toggleFavorite: (id: string) => Promise<void>;
@@ -22,12 +24,30 @@ interface LibraryState {
   setSortBy: (field: 'title' | 'artist' | 'album' | 'createdAt' | 'playCount') => void;
   toggleSortOrder: () => void;
   getFilteredTracks: () => Track[];
+
+  /**
+   * Import a YouTube or Spotify playlist and create a new playlist in the
+   * user's library containing all the imported tracks.
+   *
+   * Returns the created playlist + import summary.
+   */
+  importAsPlaylist: (
+    url: string,
+    playlistName?: string,
+    onProgress?: (message: string) => void,
+  ) => Promise<{
+    playlist: { id: string; name: string; trackCount: number };
+    imported: number;
+    total: number;
+    failed: number;
+  }>;
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   tracks: [],
   favorites: [],
   recentlyPlayed: [],
+  playlists: [],
   searchQuery: '',
   sortBy: 'createdAt',
   sortOrder: 'desc',
@@ -57,6 +77,15 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     try {
       const recentlyPlayed = await ipc.library.getRecentlyPlayed();
       set({ recentlyPlayed });
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  loadPlaylists: async () => {
+    try {
+      const playlists = await ipc.playlist.getPlaylists();
+      set({ playlists: playlists as Playlist[] });
     } catch (e: any) {
       set({ error: e.message });
     }
@@ -113,5 +142,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const cmp = typeof aVal === 'string' ? aVal.localeCompare(bVal) : aVal - bVal;
       return sortOrder === 'asc' ? cmp : -cmp;
     });
+  },
+
+  importAsPlaylist: async (url, playlistName, onProgress) => {
+    onProgress?.('Fetching playlist...');
+    const result = await ipc.import.asPlaylist(url, playlistName);
+    onProgress?.('Reloading library...');
+    // Refresh tracks and playlists so UI updates immediately
+    await Promise.all([get().loadTracks(), get().loadPlaylists()]);
+    return result;
   },
 }));

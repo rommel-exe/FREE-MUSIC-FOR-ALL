@@ -1,74 +1,100 @@
 import { useEffect, useCallback } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { usePlayerStore } from '@/store/playerStore';
 import { useUIStore } from '@/store/uiStore';
 
-export function useKeyboardShortcuts() {
-  const { togglePlay, nextTrack, previousTrack, seek, setVolume, volume, toggleMute, toggleShuffle, cycleRepeat } = usePlayerStore();
-  const { toggleQueue, isFullPlayerOpen, setFullPlayerOpen, closeModal, modalOpen } = useUIStore();
+interface ShortcutHandlers {
+  onSearchFocus?: () => void;
+}
+
+export function useKeyboardShortcuts(handlers?: ShortcutHandlers) {
+  const {
+    togglePlay,
+    nextTrack,
+    previousTrack,
+    setVolume,
+    volume,
+    toggleShuffle,
+    cycleRepeat,
+    currentTrack,
+  } = usePlayerStore(
+    useShallow((s) => ({
+      togglePlay: s.togglePlay,
+      nextTrack: s.nextTrack,
+      previousTrack: s.previousTrack,
+      setVolume: s.setVolume,
+      volume: s.volume,
+      toggleShuffle: s.toggleShuffle,
+      cycleRepeat: s.cycleRepeat,
+      currentTrack: s.currentTrack,
+    })),
+  );
+
+  const { toggleQueue, setPage } = useUIStore(
+    useShallow((s) => ({ toggleQueue: s.toggleQueue, setPage: s.setPage })),
+  );
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     const target = e.target as HTMLElement;
-    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+    const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
 
-    switch (e.key) {
-      case ' ':
-        e.preventDefault();
-        togglePlay();
-        break;
-      case 'ArrowLeft':
-        e.preventDefault();
-        seek(Math.max(0, usePlayerStore.getState().progress - 5));
-        break;
-      case 'ArrowRight':
-        e.preventDefault();
-        seek(usePlayerStore.getState().progress + 5);
-        break;
-      case 'ArrowUp':
-        e.preventDefault();
-        setVolume(Math.min(1, volume + 0.05));
-        break;
-      case 'ArrowDown':
-        e.preventDefault();
-        setVolume(Math.max(0, volume - 0.05));
-        break;
-      case 'n':
-      case 'N':
-        nextTrack();
-        break;
-      case 'p':
-      case 'P':
-        previousTrack();
-        break;
-      case 'm':
-      case 'M':
-        toggleMute();
-        break;
-      case 's':
-      case 'S':
-        if (!e.ctrlKey && !e.metaKey) toggleShuffle();
-        break;
-      case 'r':
-      case 'R':
-        if (!e.ctrlKey && !e.metaKey) cycleRepeat();
-        break;
-      case 'q':
-      case 'Q':
-        if (!e.ctrlKey && !e.metaKey) toggleQueue();
-        break;
-      case 'f':
-      case 'F':
-        if (e.ctrlKey || e.metaKey) {
+    // Cmd/Ctrl + key shortcuts (work everywhere)
+    if (e.metaKey || e.ctrlKey) {
+      switch (e.key) {
+        case 'k':
           e.preventDefault();
-        } else {
-          setFullPlayerOpen(!isFullPlayerOpen);
-        }
-        break;
-      case 'Escape':
-        if (modalOpen) closeModal();
-        else if (isFullPlayerOpen) setFullPlayerOpen(false);
-        break;
+          setPage('search');
+          handlers?.onSearchFocus?.();
+          return;
+        case 'ArrowRight':
+          e.preventDefault();
+          nextTrack();
+          return;
+        case 'ArrowLeft':
+          e.preventDefault();
+          previousTrack();
+          return;
+        case 'ArrowUp':
+          e.preventDefault();
+          setVolume(Math.min(1, volume + 0.05));
+          return;
+        case 'ArrowDown':
+          e.preventDefault();
+          setVolume(Math.max(0, volume - 0.05));
+          return;
+        case 'l':
+        case 'L':
+          e.preventDefault();
+          if (currentTrack) {
+            // Toggle favorite - dispatched via custom event
+            window.dispatchEvent(new CustomEvent('toggle-favorite', { detail: currentTrack.id }));
+          }
+          return;
+        case 'r':
+        case 'R':
+          e.preventDefault();
+          cycleRepeat();
+          return;
+        case 's':
+        case 'S':
+          e.preventDefault();
+          toggleShuffle();
+          return;
+        case 'q':
+        case 'Q':
+          e.preventDefault();
+          toggleQueue();
+          return;
+      }
     }
-  }, [togglePlay, nextTrack, previousTrack, seek, setVolume, volume, toggleMute, toggleShuffle, cycleRepeat, toggleQueue, isFullPlayerOpen, setFullPlayerOpen, closeModal, modalOpen]);
+
+    // Space bar (only when not typing in an input)
+    if (e.key === ' ' && !isInput) {
+      e.preventDefault();
+      togglePlay();
+      return;
+    }
+  }, [togglePlay, nextTrack, previousTrack, setVolume, volume, toggleShuffle, cycleRepeat, currentTrack, toggleQueue, setPage, handlers]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);

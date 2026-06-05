@@ -1,111 +1,154 @@
-import React, { useState, useMemo } from 'react';
-import { Search, Grid, List, ArrowUpDown, Music } from 'lucide-react';
+import { useShallow } from 'zustand/react/shallow';
 import { useLibraryStore } from '@/store/libraryStore';
 import { usePlayerStore } from '@/store/playerStore';
-import { TrackItem } from '@/components/common/TrackItem';
-import { EmptyState } from '@/components/common/EmptyState';
-import { TrackSkeleton } from '@/components/common/Skeleton';
-import { Input } from '@/components/common/Input';
+import { useState } from 'react';
+
+type SortField = 'title' | 'artist' | 'createdAt' | 'playCount';
 
 export function LibraryPage() {
-  const {
-    tracks, searchQuery, sortBy, sortOrder, loading,
-    loadTracks, setSearchQuery, setSortBy, toggleSortOrder, getFilteredTracks, toggleFavorite,
-  } = useLibraryStore();
-  const { playTracks } = usePlayerStore();
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const { tracks, favorites, searchQuery, setSearchQuery, sortBy, setSortBy, toggleSortOrder, sortOrder, getFilteredTracks } = useLibraryStore(
+    useShallow((s) => ({
+      tracks: s.tracks,
+      favorites: s.favorites,
+      searchQuery: s.searchQuery,
+      setSearchQuery: s.setSearchQuery,
+      sortBy: s.sortBy,
+      setSortBy: s.setSortBy,
+      toggleSortOrder: s.toggleSortOrder,
+      sortOrder: s.sortOrder,
+      getFilteredTracks: s.getFilteredTracks,
+    })),
+  );
+  const { playTracks, currentTrack, isPlaying } = usePlayerStore(
+    useShallow((s) => ({
+      playTracks: s.playTracks,
+      currentTrack: s.currentTrack,
+      isPlaying: s.isPlaying,
+    })),
+  );
+  const [tab, setTab] = useState<'all' | 'favorites'>('all');
 
-  React.useEffect(() => {
-    loadTracks();
-  }, [loadTracks]);
+  const filteredTracks = tab === 'favorites' ? favorites : getFilteredTracks();
 
-  const filteredTracks = useMemo(() => getFilteredTracks(), [tracks, searchQuery, sortBy, sortOrder]);
+  const handleSort = (field: SortField) => {
+    if (sortBy === field) {
+      toggleSortOrder();
+    } else {
+      setSortBy(field);
+    }
+  };
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      <div className="p-5 pb-3 space-y-3">
-        <div className="flex items-center justify-between">
-          <h1 className="text-mac-title-1 text-surface-50">Library</h1>
-          <span className="text-[13px] text-surface-400">{filteredTracks.length} tracks</span>
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="p-6 pb-4">
+        <h1 className="text-2xl font-bold text-white mb-4">Your Library</h1>
+
+        {/* Tabs */}
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            onClick={() => setTab('all')}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              tab === 'all' ? 'bg-white text-black' : 'bg-white/10 text-white/70 hover:bg-white/20'
+            }`}
+          >
+            All Songs ({tracks.length})
+          </button>
+          <button
+            onClick={() => setTab('favorites')}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              tab === 'favorites' ? 'bg-white text-black' : 'bg-white/10 text-white/70 hover:bg-white/20'
+            }`}
+          >
+            Liked ({favorites.length})
+          </button>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Input
-            icon={<Search size={14} />}
-            placeholder="Search your library..."
+        {/* Search */}
+        <div className="relative">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            type="text"
             value={searchQuery}
-            onChange={setSearchQuery}
-            className="flex-1"
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search in library..."
+            className="w-full pl-9 pr-4 py-2 bg-white/5 border border-white/10 rounded-md text-white text-sm placeholder-white/30 focus:outline-none focus:border-white/20"
           />
-          <div className="flex glass-control rounded-mac-sm overflow-hidden">
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
-              className="bg-transparent border-r border-mac-separator px-2.5 py-1 text-[13px] text-surface-300 focus:outline-none cursor-pointer"
-            >
-              <option value="createdAt">Date Added</option>
-              <option value="title">Title</option>
-              <option value="artist">Artist</option>
-              <option value="album">Album</option>
-              <option value="playCount">Most Played</option>
-            </select>
-            <button
-              type="button"
-              onClick={toggleSortOrder}
-              className="px-2 py-1 text-surface-400 hover:text-surface-100 transition-colors duration-150 cursor-pointer"
-            >
-              <ArrowUpDown size={14} />
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
-            className="p-1.5 glass-control rounded-mac-sm text-surface-400 hover:text-surface-100 transition-colors duration-150 cursor-pointer"
-          >
-            {viewMode === 'list' ? <Grid size={14} /> : <List size={14} />}
-          </button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 pb-5">
-        {loading ? (
-          <TrackSkeleton count={8} />
-        ) : filteredTracks.length === 0 ? (
-          <EmptyState
-            icon={<Music size={28} />}
-            title={searchQuery ? 'No matching tracks' : 'Your library is empty'}
-            description={searchQuery ? 'Try a different search term' : 'Search YouTube to add music'}
-          />
-        ) : viewMode === 'list' ? (
-          <div className="space-y-0.5">
-            {filteredTracks.map((track, index) => (
-              <TrackItem
-                key={track.id}
-                track={track}
-                index={index}
-                showIndex
-                showAlbum
-                onPlay={(t) => playTracks(filteredTracks, index)}
-                onFavorite={(t) => toggleFavorite(t.id)}
-              />
-            ))}
+      {/* Sort headers */}
+      <div className="px-6 flex items-center gap-4 text-xs text-white/40 border-b border-white/5 pb-2">
+        <span className="w-8">#</span>
+        <button onClick={() => handleSort('title')} className="flex-1 text-left hover:text-white/70 transition-colors">
+          Title {sortBy === 'title' && (sortOrder === 'asc' ? '↑' : '↓')}
+        </button>
+        <button onClick={() => handleSort('artist')} className="w-40 text-left hover:text-white/70 transition-colors">
+          Artist {sortBy === 'artist' && (sortOrder === 'asc' ? '↑' : '↓')}
+        </button>
+        <button onClick={() => handleSort('playCount')} className="w-20 text-left hover:text-white/70 transition-colors">
+          Plays {sortBy === 'playCount' && (sortOrder === 'asc' ? '↑' : '↓')}
+        </button>
+        <span className="w-16 text-right">Duration</span>
+      </div>
+
+      {/* Track list */}
+      <div className="flex-1 overflow-y-auto">
+        {filteredTracks.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12">
+            <p className="text-white/50">
+              {searchQuery ? 'No songs match your search' : tab === 'favorites' ? 'No liked songs yet' : 'Your library is empty'}
+            </p>
           </div>
         ) : (
-          <div className="grid grid-cols-4 gap-3">
-            {filteredTracks.map((track, index) => (
-              <div key={track.id} className="cursor-pointer group" onClick={() => playTracks(filteredTracks, index)}>
-                <div className="aspect-square rounded-mac overflow-hidden bg-surface-700 mb-2">
-                  {track.thumbnail ? (
-                    <img src={track.thumbnail} alt="" className="w-full h-full object-cover" />
+          filteredTracks.map((track, i) => {
+            const isCurrent = currentTrack?.id === track.id;
+            return (
+              <button
+                key={track.id}
+                onClick={() => playTracks(filteredTracks, i)}
+                className={`w-full flex items-center gap-4 px-6 py-2 hover:bg-white/5 transition-colors group ${
+                  isCurrent ? 'bg-white/5' : ''
+                }`}
+              >
+                <span className="w-8 text-sm text-white/30 text-right tabular-nums">
+                  {isCurrent && isPlaying ? (
+                    <svg className="w-4 h-4 text-green-400 inline" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                    </svg>
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center"><span className="text-2xl text-surface-500">♪</span></div>
+                    i + 1
                   )}
+                </span>
+                <div className="flex-1 min-w-0 text-left flex items-center gap-3">
+                  <div className="w-10 h-10 rounded bg-white/10 flex-shrink-0 overflow-hidden">
+                    {track.thumbnail ? (
+                      <img src={track.thumbnail} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <svg className="w-4 h-4 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className={`text-sm font-medium truncate ${isCurrent ? 'text-green-400' : 'text-white'}`}>
+                      {track.title}
+                    </div>
+                    <div className="text-xs text-white/50 truncate">{track.artist}</div>
+                  </div>
                 </div>
-                <p className="text-[13px] text-surface-100 truncate">{track.title}</p>
-                <p className="text-[11px] text-surface-400 truncate">{track.artist}</p>
-              </div>
-            ))}
-          </div>
+                <span className="w-40 text-sm text-white/50 truncate">{track.artist}</span>
+                <span className="w-20 text-sm text-white/30 tabular-nums">{track.playCount}</span>
+                <span className="w-16 text-sm text-white/30 text-right tabular-nums">
+                  {Math.floor((track.duration || 0) / 60)}:{((track.duration || 0) % 60).toString().padStart(2, '0')}
+                </span>
+              </button>
+            );
+          })
         )}
       </div>
     </div>

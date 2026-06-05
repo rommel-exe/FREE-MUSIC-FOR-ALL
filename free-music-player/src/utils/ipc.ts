@@ -1,196 +1,142 @@
-import { Track, Playlist, QueueItem, Download, SearchResult, LyricsData, Settings, SpotifyImportResult, YouTubeImportResult } from '@/types';
+import type { Track, Playlist, QueueItem, SearchResult, Settings } from '@/types';
 
-const api = (window as any).electronAPI;
+const api = window.electronAPI;
+
+/** Session data persisted across app restarts. */
+interface SessionData {
+  currentTrack?: Track | null;
+  wasPlaying?: boolean;
+  volume?: number;
+  isShuffle?: boolean;
+  repeatMode?: 'off' | 'all' | 'one';
+  queue?: Track[];
+  queueIndex?: number;
+  queueHistory?: Track[];
+  progress?: number;
+  isMuted?: boolean;
+  autoDedup?: boolean;
+}
 
 export const ipc = {
   player: {
-    play: (trackId?: string): Promise<void> => api?.player?.play(trackId),
-    pause: (): Promise<void> => api?.player?.pause(),
-    resume: (): Promise<void> => api?.player?.resume(),
-    seek: (time: number): Promise<void> => api?.player?.seek(time),
-    setVolume: (volume: number): Promise<void> => api?.player?.setVolume(volume),
-    getCurrentTrack: (): Promise<Track | null> => api?.player?.getCurrentTrack(),
-    getProgress: (): Promise<{ progress: number; duration: number }> => api?.player?.getProgress(),
-    onTrackChange: (callback: (track: Track | null) => void) => api?.player?.onTrackChange(callback),
-    onTimeUpdate: (callback: (data: { progress: number; duration: number }) => void) => api?.player?.onTimeUpdate(callback),
-    onPlaybackEnd: (callback: () => void) => api?.player?.onPlaybackEnd(callback),
+    play: (trackId?: string): Promise<void> => Promise.resolve(api?.player?.play(trackId)),
+    pause: (): Promise<void> => Promise.resolve(api?.player?.pause()),
+    resume: (): Promise<void> => Promise.resolve(api?.player?.resume()),
+    seek: (time: number): Promise<void> => Promise.resolve(api?.player?.seek(time)),
+    setVolume: (volume: number): Promise<void> => Promise.resolve(api?.player?.setVolume(volume)),
   },
+
   library: {
-    getTracks: (): Promise<Track[]> => api?.library?.getTracks() ?? Promise.resolve([]),
-    addTrack: (track: Partial<Track>): Promise<Track> => api?.library?.addTrack(track),
-    removeTrack: (id: string): Promise<void> => api?.library?.removeTrack(id),
-    searchTracks: (query: string): Promise<Track[]> => api?.library?.searchTracks(query) ?? Promise.resolve([]),
-    toggleFavorite: (id: string): Promise<boolean> => api?.library?.toggleFavorite(id),
-    getFavorites: (): Promise<Track[]> => api?.library?.getFavorites() ?? Promise.resolve([]),
-    getRecentlyPlayed: (): Promise<Track[]> => api?.library?.getRecentlyPlayed() ?? Promise.resolve([]),
-    incrementPlayCount: (id: string): Promise<void> => api?.library?.incrementPlayCount(id),
+    getTracks: (): Promise<Track[]> =>
+      (api?.library?.getTracks() as Promise<Track[]> | undefined) ?? Promise.resolve([]),
+    addTrack: (track: Partial<Track>): Promise<Track> =>
+      (api?.library?.addTrack(track) as Promise<Track> | undefined) ?? Promise.reject(new Error('No API')),
+    removeTrack: (id: string): Promise<void> => api?.library?.removeTrack(id) ?? Promise.resolve(),
+    searchTracks: (query: string): Promise<Track[]> =>
+      (api?.library?.searchTracks(query) as Promise<Track[]> | undefined) ?? Promise.resolve([]),
+    toggleFavorite: (id: string): Promise<boolean> =>
+      (api?.library?.toggleFavorite(id) as Promise<boolean> | undefined) ?? Promise.resolve(false),
+    getFavorites: (): Promise<Track[]> =>
+      (api?.library?.getFavorites() as Promise<Track[]> | undefined) ?? Promise.resolve([]),
+    getRecentlyPlayed: (): Promise<Track[]> =>
+      (api?.library?.getRecentlyPlayed() as Promise<Track[]> | undefined) ?? Promise.resolve([]),
+    incrementPlayCount: (id: string): Promise<void> =>
+      api?.library?.incrementPlayCount(id) ?? Promise.resolve(),
   },
+
   playlist: {
-    getPlaylists: (): Promise<Playlist[]> => api?.playlist?.getPlaylists() ?? Promise.resolve([]),
-    createPlaylist: (name: string, description?: string): Promise<Playlist> => api?.playlist?.createPlaylist(name, description),
-    deletePlaylist: (id: string): Promise<void> => api?.playlist?.deletePlaylist(id),
-    updatePlaylist: (id: string, data: Partial<Playlist>): Promise<void> => api?.playlist?.updatePlaylist(id, data),
-    addTrackToPlaylist: (playlistId: string, trackId: string): Promise<void> => api?.playlist?.addTrackToPlaylist(playlistId, trackId),
-    removeTrackFromPlaylist: (playlistId: string, trackId: string): Promise<void> => api?.playlist?.removeTrackFromPlaylist(playlistId, trackId),
-    getPlaylistTracks: (playlistId: string): Promise<Track[]> => api?.playlist?.getPlaylistTracks(playlistId) ?? Promise.resolve([]),
-    reorderPlaylistTracks: (playlistId: string, fromIndex: number, toIndex: number): Promise<void> => api?.playlist?.reorderPlaylistTracks(playlistId, fromIndex, toIndex),
+    getPlaylists: (): Promise<Playlist[]> =>
+      (api?.playlist?.getPlaylists() as Promise<Playlist[]> | undefined) ?? Promise.resolve([]),
+    createPlaylist: (name: string, description?: string): Promise<Playlist> =>
+      (api?.playlist?.createPlaylist(name, description) as Promise<Playlist> | undefined) ??
+      Promise.reject(new Error('No API')),
+    deletePlaylist: (id: string): Promise<void> => api?.playlist?.deletePlaylist(id) ?? Promise.resolve(),
+    updatePlaylist: (id: string, data: Partial<Playlist>): Promise<void> =>
+      api?.playlist?.updatePlaylist(id, data) ?? Promise.resolve(),
+    addTrackToPlaylist: (playlistId: string, trackId: string): Promise<void> =>
+      api?.playlist?.addTrackToPlaylist(playlistId, trackId) ?? Promise.resolve(),
+    removeTrackFromPlaylist: (playlistId: string, trackId: string): Promise<void> =>
+      api?.playlist?.removeTrackFromPlaylist(playlistId, trackId) ?? Promise.resolve(),
+    getPlaylistTracks: (playlistId: string): Promise<Track[]> =>
+      (api?.playlist?.getPlaylistTracks(playlistId) as Promise<Track[]> | undefined) ?? Promise.resolve([]),
+    reorderPlaylistTracks: (playlistId: string, fromIndex: number, toIndex: number): Promise<void> =>
+      api?.playlist?.reorderPlaylistTracks(playlistId, fromIndex, toIndex) ?? Promise.resolve(),
   },
+
   queue: {
-    getQueue: (): Promise<QueueItem[]> => api?.queue?.getQueue() ?? Promise.resolve([]),
-    addToQueue: (trackId: string): Promise<void> => api?.queue?.addToQueue(trackId),
-    playNext: (trackId: string): Promise<void> => api?.queue?.playNext(trackId),
-    removeFromQueue: (id: number): Promise<void> => api?.queue?.removeFromQueue(id),
-    reorderQueue: (from: number, to: number): Promise<void> => api?.queue?.reorderQueue(from, to),
-    clearQueue: (): Promise<void> => api?.queue?.clearQueue(),
+    getQueue: (): Promise<QueueItem[]> =>
+      (api?.queue?.getQueue() as Promise<QueueItem[]> | undefined) ?? Promise.resolve([]),
+    addToQueue: (trackId: string): Promise<void> => api?.queue?.addToQueue(trackId) ?? Promise.resolve(),
+    playNext: (trackId: string): Promise<void> => api?.queue?.playNext(trackId) ?? Promise.resolve(),
+    removeFromQueue: (id: number): Promise<void> => api?.queue?.removeFromQueue(id) ?? Promise.resolve(),
+    reorderQueue: (from: number, to: number): Promise<void> =>
+      api?.queue?.reorderQueue(from, to) ?? Promise.resolve(),
+    clearQueue: (): Promise<void> => api?.queue?.clearQueue() ?? Promise.resolve(),
   },
-  download: {
-    startDownload: (videoId: string, title: string, artist: string, thumbnail: string): Promise<void> =>
-      api?.download?.startDownload(videoId, title, artist, thumbnail),
-    downloadPlaylist: (tracks: any[]): Promise<any[]> => api?.download?.downloadPlaylist(tracks) ?? Promise.resolve([]),
-    getDownloads: (): Promise<Download[]> => api?.download?.getDownloads() ?? Promise.resolve([]),
-    cancelDownload: (id: string): Promise<void> => api?.download?.cancelDownload(id),
-    removeDownload: (id: string): Promise<void> => api?.download?.removeDownload(id),
-    onBatchProgress: (cb: (data: { current: number; total: number; track: string }) => void) =>
-      api?.download?.onBatchProgress?.(cb),
-    onBatchComplete: (cb: (data: { results: any[] }) => void) =>
-      api?.download?.onBatchComplete?.(cb),
-  },
+
   search: {
     searchYouTube: (query: string, limit?: number): Promise<SearchResult[]> =>
-      api?.search?.searchYouTube(query, limit) ?? Promise.resolve([]),
-    getStreamUrl: (videoId: string): Promise<string> => api?.search?.getStreamUrl(videoId) ?? Promise.resolve(''),
-    getLocalStreamPath: (videoId: string): Promise<string> => api?.search?.getLocalStreamPath(videoId) ?? Promise.resolve(''),
+      (api?.search?.searchYouTube(query, limit) as Promise<SearchResult[]> | undefined) ?? Promise.resolve([]),
   },
-  import: {
-    importSpotifyPlaylist: (url: string): Promise<SpotifyImportResult> => api?.import?.importSpotifyPlaylist(url),
-    importYouTubePlaylist: (url: string): Promise<YouTubeImportResult> => api?.import?.importYouTubePlaylist(url),
-    importTracks: (tracks: { title: string; artist: string; album?: string; duration?: number }[], targetPlaylistId?: string): Promise<Track[]> =>
-      api?.import?.importTracks(tracks, targetPlaylistId) ?? Promise.resolve([]),
-  },
-  lyrics: {
-    getLyrics: (track: string, artist: string, album?: string, duration?: number): Promise<LyricsData> =>
-      api?.lyrics?.getLyrics(track, artist, album, duration) ?? Promise.resolve({}),
-  },
+
   settings: {
-    getSettings: (): Promise<Settings> => api?.settings?.getSettings(),
-    updateSettings: (settings: Partial<Settings>): Promise<void> => api?.settings?.updateSettings(settings),
+    getSettings: (): Promise<Settings> =>
+      (api?.settings?.getSettings() as Promise<Settings> | undefined) ?? Promise.reject(new Error('No API')),
+    updateSettings: (settings: Partial<Settings>): Promise<void> =>
+      api?.settings?.updateSettings(settings) ?? Promise.resolve(),
+    getSession: (): Promise<SessionData | null> =>
+      (api?.settings?.getSession?.() as Promise<SessionData> | undefined) ?? Promise.resolve(null),
+    saveSession: (session: SessionData): Promise<void> =>
+      api?.settings?.saveSession?.(session) ?? Promise.resolve(),
   },
+
+  stream: {
+    resolve: (videoId: string): Promise<{ url?: string; expiresAt?: number; bitrate?: number; error?: string }> =>
+      (api?.stream?.resolve?.(videoId) as
+        | Promise<{ url?: string; expiresAt?: number; bitrate?: number; error?: string }>
+        | undefined) ?? Promise.resolve({ error: 'No API' }),
+    prefetch: (videoId: string): Promise<{ ok: boolean }> =>
+      (api?.stream?.prefetch?.(videoId) as Promise<{ ok: boolean }> | undefined) ??
+      Promise.resolve({ ok: false }),
+    hasCached: (videoId: string): Promise<{ cached: boolean }> =>
+      (api?.stream?.hasCached?.(videoId) as Promise<{ cached: boolean }> | undefined) ??
+      Promise.resolve({ cached: false }),
+    getCached: (videoId: string): Promise<{ url?: string; expiresAt?: number; bitrate?: number; error?: string }> =>
+      (api?.stream?.getCached?.(videoId) as
+        | Promise<{ url?: string; expiresAt?: number; bitrate?: number; error?: string }>
+        | undefined) ?? Promise.resolve({ error: 'No API' }),
+  },
+
+  import: {
+    youtube: (url: string): Promise<{ name: string; tracks: Array<{ title: string; artist: string; duration: number; thumbnail: string; youtubeId: string }> }> =>
+      (api?.import?.youtube(url) as
+        | Promise<{ name: string; tracks: Array<{ title: string; artist: string; duration: number; thumbnail: string; youtubeId: string }> }>
+        | undefined) ?? Promise.reject(new Error('No API')),
+    spotify: (url: string): Promise<{ name: string; tracks: Array<{ title: string; artist: string; duration: number; thumbnail: string }> }> =>
+      (api?.import?.spotify(url) as
+        | Promise<{ name: string; tracks: Array<{ title: string; artist: string; duration: number; thumbnail: string }> }>
+        | undefined) ?? Promise.reject(new Error('No API')),
+    asPlaylist: (url: string, playlistName?: string): Promise<{
+      playlist: { id: string; name: string; trackCount: number };
+      imported: number;
+      total: number;
+      failed: number;
+    }> =>
+      (api?.import?.asPlaylist(url, playlistName) as
+        | Promise<{
+            playlist: { id: string; name: string; trackCount: number };
+            imported: number;
+            total: number;
+            failed: number;
+          }>
+        | undefined) ?? Promise.reject(new Error('No API')),
+  },
+
   app: {
-    minimize: () => api?.app?.minimize(),
-    maximize: () => api?.app?.maximize(),
-    close: () => api?.app?.close(),
-    getVersion: (): Promise<string> => api?.app?.getVersion() ?? Promise.resolve('1.0.0'),
-    openDownloadsFolder: (): Promise<string> => api?.app?.openDownloadsFolder() ?? Promise.resolve(''),
-    revealInFolder: (filePath: string): Promise<void> => api?.app?.revealInFolder(filePath) ?? Promise.resolve(),
-  },
-  update: {
-    check: (): Promise<UpdateState> => api?.update?.check() ?? Promise.resolve({ status: 'idle' }),
-    download: (): Promise<UpdateState> => api?.update?.download() ?? Promise.resolve({ status: 'idle' }),
-    install: (): Promise<boolean> => api?.update?.install() ?? Promise.resolve(false),
-    getState: (): Promise<UpdateState> => api?.update?.getState() ?? Promise.resolve({ status: 'idle' }),
-    getVersion: (): Promise<string> => api?.update?.getVersion() ?? Promise.resolve('1.0.0'),
-    onStatusChange: (callback: (state: UpdateState) => void) => api?.update?.onStatusChange?.(callback),
-  },
-  analytics: {
-    startPlay: (trackId: string, duration: number): Promise<number> =>
-      api?.analytics?.startPlay(trackId, duration) ?? Promise.resolve(0),
-    endPlay: (historyId: number, secondsPlayed: number, completed: boolean): Promise<boolean> =>
-      api?.analytics?.endPlay(historyId, secondsPlayed, completed) ?? Promise.resolve(false),
-    recordPlay: (trackId: string, secondsPlayed: number, trackDuration: number, completed: boolean): Promise<number> =>
-      api?.analytics?.recordPlay(trackId, secondsPlayed, trackDuration, completed) ?? Promise.resolve(0),
-    getOverview: (): Promise<AnalyticsOverview> => api?.analytics?.getOverview(),
-    getTopArtists: (limit?: number): Promise<TopArtist[]> =>
-      api?.analytics?.getTopArtists(limit) ?? Promise.resolve([]),
-    getTopAlbums: (limit?: number): Promise<TopAlbum[]> =>
-      api?.analytics?.getTopAlbums(limit) ?? Promise.resolve([]),
-    getTopTracks: (limit?: number): Promise<TopTrack[]> =>
-      api?.analytics?.getTopTracks(limit) ?? Promise.resolve([]),
-    getListeningByDay: (days?: number): Promise<DayStat[]> =>
-      api?.analytics?.getListeningByDay(days) ?? Promise.resolve([]),
-    getListeningByHour: (): Promise<HourStat[]> =>
-      api?.analytics?.getListeningByHour() ?? Promise.resolve([]),
-    getStreak: (): Promise<{ current: number; longest: number }> =>
-      api?.analytics?.getStreak() ?? Promise.resolve({ current: 0, longest: 0 }),
-    getRecentPlays: (limit?: number): Promise<RecentPlay[]> =>
-      api?.analytics?.getRecentPlays(limit) ?? Promise.resolve([]),
+    minimize: (): void => api?.app?.minimize(),
+    maximize: (): void => api?.app?.maximize(),
+    close: (): void => api?.app?.close(),
+    getVersion: (): Promise<string> =>
+      (api?.app?.getVersion() as Promise<string> | undefined) ?? Promise.resolve('1.0.0'),
   },
 };
-
-export type UpdateStatus =
-  | 'idle'
-  | 'checking'
-  | 'available'
-  | 'not-available'
-  | 'downloading'
-  | 'downloaded'
-  | 'error';
-
-export interface UpdateState {
-  status: UpdateStatus;
-  version?: string;
-  releaseNotes?: string;
-  percent?: number;
-  transferred?: number;
-  total?: number;
-  error?: string;
-}
-
-export interface AnalyticsOverview {
-  totalPlays: number;
-  totalSeconds: number;
-  completedPlays: number;
-  lastPlayedAt: string | null;
-  uniqueTracks: number;
-  uniqueArtists: number;
-  uniqueAlbums: number;
-}
-
-export interface TopArtist {
-  artist: string;
-  track_count: number;
-  play_count: number;
-  total_seconds: number;
-}
-
-export interface TopAlbum {
-  album: string;
-  artist: string;
-  track_count: number;
-  play_count: number;
-  total_seconds: number;
-}
-
-export interface TopTrack {
-  track_id: string;
-  title: string;
-  artist: string;
-  album: string;
-  thumbnail: string;
-  play_count: number;
-  total_seconds: number;
-}
-
-export interface DayStat {
-  date: string;
-  seconds: number;
-  plays: number;
-}
-
-export interface HourStat {
-  hour: number;
-  seconds: number;
-  plays: number;
-}
-
-export interface RecentPlay {
-  id: number;
-  track_id: string;
-  played_at: string;
-  seconds_played: number;
-  track_duration: number;
-  completed: number;
-  title: string;
-  artist: string;
-  album: string;
-  thumbnail: string;
-}

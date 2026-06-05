@@ -45,10 +45,7 @@ export interface QueueItem {
 export interface Settings {
   volume: number;
   quality: string;
-  downloadPath: string;
   theme: string;
-  miniPlayer: boolean;
-  alwaysOnTop: boolean;
   [key: string]: string | number | boolean;
 }
 
@@ -65,7 +62,7 @@ export interface Favorite {
   added_at: string;
 }
 
-/** ── YouTube / Search ──────────────────────────────────────────────── */
+/** ── Search ────────────────────────────────────────────────────────── */
 export interface SearchResult {
   id: string;
   title: string;
@@ -75,111 +72,14 @@ export interface SearchResult {
   url: string;
 }
 
-export interface PlaylistTrackResult extends SearchResult {
-  position: number;
-}
-
-/** ── YouTube Music ─────────────────────────────────────────────────── */
-export interface YTMusicThumbnail {
-  url: string;
-  width: number;
-  height: number;
-}
-
-export interface YTMusicSearchResult {
-  id: string;
-  title: string;
-  artist: string;
-  album?: string;
-  duration?: number;
-  thumbnails: YTMusicThumbnail[];
-  type: 'song' | 'video' | 'album' | 'artist' | 'playlist';
-}
-
-export interface YTMusicSong {
-  id: string;
-  title: string;
-  artist: string;
-  album: string;
-  duration: number;
-  thumbnails: YTMusicThumbnail[];
-  year?: string;
-  likeStatus?: string;
-}
-
-export interface YTMusicAlbum {
-  id: string;
-  title: string;
-  artist: string;
-  year?: string;
-  thumbnails: YTMusicThumbnail[];
-  tracks: YTMusicSong[];
-}
-
-export interface YTMusicArtist {
-  id: string;
-  name: string;
-  thumbnails: YTMusicThumbnail[];
-  description?: string;
-  subscribers?: string;
-}
-
-export interface YTMusicPlaylist {
-  id: string;
-  title: string;
-  description?: string;
-  thumbnails: YTMusicThumbnail[];
-  trackCount: number;
-  tracks: YTMusicSong[];
-}
-
-/** ── Lyrics ────────────────────────────────────────────────────────── */
-export interface LyricsResult {
-  plain?: string;
-  synced?: { time: number; text: string }[];
-}
-
-/** ── Downloads ─────────────────────────────────────────────────────── */
-export interface DownloadItem {
-  id: string;
+/** ── Media Source ───────────────────────────────────────────────────── */
+export interface MediaSource {
+  /** Local HTTP proxy URL (same-origin, no CORS issues) */
+  audioUrl: string;
+  /** Unix timestamp (ms) when this source expires */
+  expiresAt: number;
+  /** Audio bitrate in kbps */
+  bitrate: number;
+  /** Original YouTube video ID */
   videoId: string;
-  title: string;
-  artist: string;
-  thumbnail: string;
-  progress: number;
-  status: 'pending' | 'downloading' | 'completed' | 'cancelled' | 'error';
-  outputPath?: string;
-  error?: string;
-  startedAt: string;
-}
-
-/** ── Spotify Import ────────────────────────────────────────────────── */
-export interface SpotifyTrack {
-  title: string;
-  artist: string;
-  album: string;
-  duration: number;
-}
-
-export interface SpotifyPlaylistImport {
-  name: string;
-  description: string;
-  thumbnail: string;
-  tracks: SpotifyTrack[];
-}
-
-/** ── YouTube Playlist Import ───────────────────────────────────────── */
-export interface YTPlaylistTrack {
-  title: string;
-  artist: string;
-  duration: number;
-  videoId: string;
-  thumbnail: string;
-}
-
-export interface YTPlaylistImport {
-  name: string;
-  description: string;
-  thumbnail: string;
-  tracks: YTPlaylistTrack[];
 }

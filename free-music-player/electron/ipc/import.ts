@@ -1,30 +1,116 @@
 import { ipcMain } from 'electron';
-import { importPlaylist as importSpotifyPlaylist } from '../services/spotify-import';
-import { importPlaylist as importYTPlaylist } from '../services/yt-playlist';
-import { searchYouTube } from '../services/ytdl';
+import {
+  importYouTubePlaylist,
+  importSpotifyPlaylist,
+  type PlaylistImportResult,
+} from '../services/playlistImport';
 import * as db from '../utils/database';
 
 function generateId(): string {
-  try { return crypto.randomUUID(); } catch { return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`; }
-}
-
-/**
- * Search YouTube for a track and return the videoId.
- * Returns null if no result found.
- */
-async function resolveYouTubeId(title: string, artist: string): Promise<string | null> {
   try {
-    const query = `${title} ${artist}`.trim();
-    if (!query) return null;
-    const results = await searchYouTube(query, 1);
-    return results && results.length > 0 ? results[0].id : null;
+    return crypto.randomUUID();
   } catch {
-    return null;
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   }
 }
 
+/**
+ * Import a YouTube or Spotify playlist AND create a new playlist in the
+ * user's library that contains all the imported tracks.
+ *
+ * Returns the created playlist + the import summary.
+ */
+async function importAsPlaylist(
+  url: string,
+  playlistName?: string,
+): Promise<{
+  playlist: { id: string; name: string; trackCount: number };
+  imported: number;
+  total: number;
+  failed: number;
+}> {
+  const trimmed = url.trim();
+  const isSpotify = trimmed.includes('spotify.com');
+  const isYoutube =
+    trimmed.includes('youtube.com') ||
+    trimmed.includes('youtu.be') ||
+    trimmed.includes('music.youtube.com');
+
+  if (!isSpotify && !isYoutube) {
+    throw new Error('Invalid playlist URL');
+  }
+
+  // ── 1. Fetch the source playlist ──────────────────────────────────────
+  let source: PlaylistImportResult;
+  if (isYoutube) {
+    source = await importYouTubePlaylist(trimmed);
+  } else {
+    source = await importSpotifyPlaylist(trimmed);
+  }
+
+  const name = (playlistName?.trim() || source.name || 'Imported Playlist').slice(0, 200);
+
+  // ── 2. Create the playlist row ────────────────────────────────────────
+  const playlistId = generateId();
+  const playlist = db.createPlaylist({
+    id: playlistId,
+    name,
+    description: isYoutube ? 'Imported from YouTube' : 'Imported from Spotify',
+    thumbnail: source.thumbnail || source.tracks[0]?.thumbnail || '',
+    source: isYoutube ? 'youtube' : 'spotify',
+    source_url: trimmed,
+  });
+
+  // ── 3. Insert tracks + link to playlist ──────────────────────────────
+  let imported = 0;
+  let failed = 0;
+  const total = source.tracks.length;
+
+  const BATCH_SIZE = 10;
+  for (let i = 0; i < source.tracks.length; i += BATCH_SIZE) {
+    const batch = source.tracks.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map((t) => {
+        const trackId = generateId();
+        const inserted = db.addTrack({
+          id: trackId,
+          title: t.title || '',
+          artist: t.artist || '',
+          album: '',
+          duration: t.duration || 0,
+          path: '',
+          thumbnail: t.thumbnail || '',
+          youtube_id: t.youtubeId || '',
+          source: t.youtubeId ? 'youtube' : isYoutube ? 'youtube' : 'spotify',
+        });
+        db.addTrackToPlaylist(playlistId, inserted.id);
+        return inserted;
+      }),
+    );
+    for (const r of results) {
+      if (r.status === 'fulfilled') imported++;
+      else failed++;
+    }
+  }
+
+  return {
+    playlist: { id: playlist.id, name: playlist.name, trackCount: imported },
+    imported,
+    total,
+    failed,
+  };
+}
+
 export function registerImportHandlers(): void {
-  ipcMain.handle('import:importSpotifyPlaylist', async (_event, url: string) => {
+  ipcMain.handle('import:youtube', async (_event, url: string) => {
+    try {
+      return await importYouTubePlaylist(url);
+    } catch (err: any) {
+      throw new Error(`YouTube import failed: ${err.message}`);
+    }
+  });
+
+  ipcMain.handle('import:spotify', async (_event, url: string) => {
     try {
       return await importSpotifyPlaylist(url);
     } catch (err: any) {
@@ -32,70 +118,14 @@ export function registerImportHandlers(): void {
     }
   });
 
-  ipcMain.handle('import:importYouTubePlaylist', async (_event, url: string) => {
-    try {
-      return await importYTPlaylist(url);
-    } catch (err: any) {
-      throw new Error(`YouTube import failed: ${err.message}`);
-    }
-  });
-
-  ipcMain.handle('import:importTracks', async (_event, tracks: any[], targetPlaylistId?: string) => {
-    try {
-      // Create playlist if we have a target
-      let playlistId = targetPlaylistId;
-      if (playlistId && !db.getPlaylistById(playlistId)) {
-        playlistId = undefined;
+  ipcMain.handle(
+    'import:asPlaylist',
+    async (_event, url: string, playlistName?: string) => {
+      try {
+        return await importAsPlaylist(url, playlistName);
+      } catch (err: any) {
+        throw new Error(`Playlist import failed: ${err.message}`);
       }
-
-      const importedTracks: any[] = [];
-
-      // Pre-resolve YouTube IDs in parallel for tracks that don't have one.
-      // CRITICAL: we use the ORIGINAL array index as the key (not the object
-      // reference) because IPC serialization creates fresh objects on the main
-      // process side, so object-identity Map keys can fail to match.
-      console.log(`[Import] Pre-resolving YouTube IDs for ${tracks.length} tracks in parallel...`);
-      const resolveStart = Date.now();
-
-      const resolvePromises = tracks.map(async (t, idx) => {
-        if (t.videoId || !t.title) return { idx, videoId: '' };
-        const videoId = await resolveYouTubeId(t.title, t.artist);
-        return { idx, videoId: videoId || '' };
-      });
-      const resolveResults = await Promise.all(resolvePromises);
-      const videoIdByIndex = new Map<number, string>();
-      for (const { idx, videoId } of resolveResults) {
-        if (videoId) videoIdByIndex.set(idx, videoId);
-      }
-      const resolved = Array.from(videoIdByIndex.values()).filter(Boolean).length;
-      console.log(`[Import] Resolved ${resolved}/${tracks.length} YouTube IDs in ${Date.now() - resolveStart}ms`);
-
-      for (let i = 0; i < tracks.length; i++) {
-        const t = tracks[i];
-        const trackId = generateId();
-        const videoId = t.videoId || videoIdByIndex.get(i) || '';
-        const track = db.addTrack({
-          id: trackId,
-          title: t.title || '',
-          artist: t.artist || '',
-          album: t.album || '',
-          duration: t.duration || 0,
-          path: '',
-          thumbnail: t.thumbnail || '',
-          youtube_id: videoId,
-          source: videoId ? 'youtube' : 'local',
-        });
-        importedTracks.push(track);
-
-        if (playlistId) {
-          const pts = db.getPlaylistTracks(playlistId);
-          db.addTrackToPlaylist(playlistId, trackId, pts.length);
-        }
-      }
-
-      return importedTracks;
-    } catch (err: any) {
-      throw new Error(`Track import failed: ${err.message}`);
-    }
-  });
+    },
+  );
 }

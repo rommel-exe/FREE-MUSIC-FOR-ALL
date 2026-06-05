@@ -32,4 +32,23 @@ export function registerSettingsHandlers(): void {
       throw new Error(`Failed to get setting: ${message}`);
     }
   });
+
+  ipcMain.handle('settings:getSession', () => {
+    try {
+      return db.getSession();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`Failed to get session: ${message}`);
+    }
+  });
+
+  ipcMain.handle('settings:saveSession', (_event, session: Record<string, unknown>) => {
+    try {
+      db.saveSession(session);
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`Failed to save session: ${message}`);
+    }
+  });
 }

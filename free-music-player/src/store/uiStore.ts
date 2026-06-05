@@ -1,5 +1,10 @@
 import { create } from 'zustand';
-import { Toast } from '@/types';
+
+interface Toast {
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'info';
+}
 
 interface UIState {
   currentPage: string;

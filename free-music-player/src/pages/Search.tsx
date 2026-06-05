@@ -1,161 +1,168 @@
-import React, { useState, useCallback } from 'react';
-import { Search as SearchIcon, Play, Plus, Download } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { useState, useCallback, useRef, useEffect, memo } from 'react';
 import { ipc } from '@/utils/ipc';
-import { SearchResult } from '@/types';
 import { usePlayerStore } from '@/store/playerStore';
-import { useUIStore } from '@/store/uiStore';
-import { useDownloadStore } from '@/store/downloadStore';
-import { Input } from '@/components/common/Input';
-import { TrackSkeleton } from '@/components/common/Skeleton';
-import { formatDuration } from '@/utils/formatters';
+import { useLibraryStore } from '@/store/libraryStore';
+import { queryEngine } from '@/engine/queryEngine';
+import type { SearchResult, Track } from '@/types';
 
-export function SearchPage() {
+interface SearchPageProps {
+  inputRef?: React.RefObject<HTMLInputElement | null>;
+}
+
+// Debounce hook
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  return debouncedValue;
+}
+
+// Memoized search result item
+const SearchResultItem = memo(function SearchResultItem({
+  result,
+  index,
+  onPlay,
+}: {
+  result: Track;
+  index: number;
+  onPlay: (result: Track, index: number) => void;
+}) {
+  return (
+    <button
+      onClick={() => onPlay(result, index)}
+      className="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-white/5 transition-colors group"
+    >
+      <div className="w-10 h-10 rounded bg-white/10 flex-shrink-0 overflow-hidden">
+        {result.thumbnail ? (
+          <img src={result.thumbnail} alt="" className="w-full h-full object-cover" loading="lazy" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <svg className="w-4 h-4 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" />
+            </svg>
+          </div>
+        )}
+      </div>
+      <div className="flex-1 min-w-0 text-left">
+        <div className="text-sm font-medium text-white truncate">{result.title}</div>
+        <div className="text-xs text-white/50 truncate">{result.artist}</div>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-white/30 tabular-nums">
+          {Math.floor(result.duration / 60)}:{(result.duration % 60).toString().padStart(2, '0')}
+        </span>
+        <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+          <svg className="w-4 h-4 text-black ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+        </div>
+      </div>
+    </button>
+  );
+});
+
+export function SearchPage({ inputRef: externalRef }: SearchPageProps) {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const [results, setResults] = useState<Track[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
-  const { playTrack, addToQueue } = usePlayerStore();
-  const { addToast } = useUIStore();
-  const { startDownload } = useDownloadStore();
+  const internalRef = useRef<HTMLInputElement>(null);
+  const inputRef = externalRef || internalRef;
+  const playTracks = usePlayerStore((s) => s.playTracks);
+  const addTrack = useLibraryStore((s) => s.addTrack);
 
-  const doSearch = useCallback(async () => {
-    if (!query.trim()) return;
-    setLoading(true);
-    setSearched(true);
-    try {
-      const res = await ipc.search.searchYouTube(query.trim());
-      setResults(res);
-    } catch {
-      addToast('Search failed', 'error');
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [inputRef]);
+
+  // Debounced search
+  const debouncedQuery = useDebounce(query, 300);
+
+  useEffect(() => {
+    if (!debouncedQuery.trim()) return;
+
+    let cancelled = false;
+
+    async function search() {
+      setLoading(true);
+      setSearched(true);
+      try {
+        const res = await queryEngine.search(debouncedQuery, 20);
+        if (!cancelled) setResults(res);
+      } catch (err) {
+        if (!cancelled) setResults([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
-  }, [query, addToast]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') doSearch();
-  };
+    search();
+    return () => { cancelled = true; };
+  }, [debouncedQuery]);
 
-  const handlePlay = (result: SearchResult) => {
-    const track = {
-      id: result.id,
+  const handlePlay = useCallback(async (result: Track, index: number) => {
+    await addTrack({
       title: result.title,
       artist: result.artist,
-      album: '',
       duration: result.duration,
       thumbnail: result.thumbnail,
-      path: '',
-      youtubeId: result.id,
-      source: 'youtube' as const,
-      isFavorite: false,
-      playCount: 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    playTrack(track);
-  };
+      youtubeId: result.youtubeId,
+      source: 'youtube',
+    });
+
+    playTracks(results, index);
+  }, [results, playTracks, addTrack]);
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      <div className="p-5 pb-4 space-y-4">
-        <h1 className="text-mac-title-1 text-surface-50">Search</h1>
-        <div className="flex gap-2.5">
-          <Input
-            icon={<SearchIcon size={14} />}
-            placeholder="Search YouTube for music..."
+    <div className="h-full overflow-y-auto">
+      {/* Search header */}
+      <div className="sticky top-0 z-10 bg-[#0a0a0a]/80 backdrop-blur-xl p-6 pb-4">
+        <div className="relative max-w-xl">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            ref={inputRef}
+            type="text"
             value={query}
-            onChange={setQuery}
-            onKeyDown={handleKeyDown}
-            className="flex-1"
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="What do you want to listen to?"
+            className="w-full pl-10 pr-4 py-3 bg-white/10 border border-white/10 rounded-full text-white placeholder-white/40 text-sm focus:outline-none focus:border-white/30 transition-colors"
           />
-          <button
-            type="button"
-            onClick={doSearch}
-            disabled={loading || !query.trim()}
-            className="h-7 px-5 bg-mac-blue hover:bg-[#0070E0] disabled:opacity-40 text-white rounded-mac-sm text-[13px] font-medium transition-colors duration-150 cursor-pointer"
-          >
-            Search
-          </button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 pb-5">
-        {loading ? (
-          <TrackSkeleton count={8} />
-        ) : results.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center">
-            {!searched ? (
-              <>
-                <div className="w-16 h-16 rounded-mac-lg bg-mac-fill/30 flex items-center justify-center mb-4">
-                  <SearchIcon size={28} className="text-surface-500" />
-                </div>
-                <h3 className="text-[17px] font-semibold text-surface-300 mb-1">Search YouTube</h3>
-                <p className="text-[13px] text-surface-500">Find any song and play it instantly</p>
-              </>
-            ) : (
-              <>
-                <h3 className="text-[17px] font-semibold text-surface-300 mb-1">No results found</h3>
-                <p className="text-[13px] text-surface-500">Try a different search term</p>
-              </>
-            )}
+      <div className="px-6 pb-6">
+        {loading && (
+          <div className="flex items-center justify-center py-12">
+            <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin" />
           </div>
-        ) : (
-          <div className="space-y-0.5">
-            {results.map((result) => (
-              <div
-                key={result.id}
-                className="flex items-center gap-3 p-2 rounded-mac-sm hover:bg-white/5 cursor-pointer group transition-colors duration-150"
-              >
-                <div
-                  className="w-10 h-10 rounded-mac-sm overflow-hidden bg-surface-700 flex-shrink-0"
-                  onClick={() => handlePlay(result)}
-                >
-                  {result.thumbnail ? (
-                    <img src={result.thumbnail} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-surface-500">♪</div>
-                  )}
-                </div>
+        )}
 
-                <div className="flex-1 min-w-0" onClick={() => handlePlay(result)}>
-                  <p className="text-[13px] font-medium text-surface-100 truncate group-hover:text-mac-blue transition-colors duration-150">
-                    {result.title}
-                  </p>
-                  <p className="text-[11px] text-surface-400 truncate">{result.artist}</p>
-                </div>
+        {!loading && searched && results.length === 0 && (
+          <div className="text-center py-12">
+            <p className="text-white/50">No results found for &quot;{query}&quot;</p>
+          </div>
+        )}
 
-                <span className="text-[11px] text-surface-500 font-mono tabular-nums">{formatDuration(result.duration)}</span>
-
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); handlePlay(result); }}
-                    className="p-1.5 rounded-mac-sm bg-mac-blue hover:bg-[#0070E0] text-white transition-colors duration-150"
-                  >
-                    <Play size={12} fill="white" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); addToQueue({
-                      id: result.id, title: result.title, artist: result.artist, album: '', duration: result.duration,
-                      thumbnail: result.thumbnail, path: '', youtubeId: result.id, source: 'youtube',
-                      isFavorite: false, playCount: 0, createdAt: '', updatedAt: '',
-                    }); addToast('Added to queue'); }}
-                    className="p-1.5 rounded-mac-sm hover:bg-white/5 text-surface-400 hover:text-surface-100 transition-colors duration-150"
-                  >
-                    <Plus size={12} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); startDownload(result.id, result.title, result.artist, result.thumbnail); addToast('Download started'); }}
-                    className="p-1.5 rounded-mac-sm hover:bg-white/5 text-surface-400 hover:text-surface-100 transition-colors duration-150"
-                  >
-                    <Download size={12} />
-                  </button>
-                </div>
-              </div>
+        {!loading && results.length > 0 && (
+          <div className="space-y-1">
+            {results.map((result, i) => (
+              <SearchResultItem key={result.id} result={result} index={i} onPlay={handlePlay} />
             ))}
+          </div>
+        )}
+
+        {!searched && (
+          <div className="flex flex-col items-center justify-center py-12">
+            <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4">
+              <svg className="w-6 h-6 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <p className="text-white/50">Search for songs, artists, or albums</p>
           </div>
         )}
       </div>

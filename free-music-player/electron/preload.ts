@@ -1,36 +1,28 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-// ─── Helpers ────────────────────────────────────────────────────────────
-
-function invoke(channel: string, ...args: unknown[]): Promise<any> {
-  return ipcRenderer.invoke(channel, ...args);
+function invoke<T = unknown>(channel: string, ...args: unknown[]): Promise<T> {
+  return ipcRenderer.invoke(channel, ...args) as Promise<T>;
 }
 
 function send(channel: string, ...args: unknown[]): void {
   ipcRenderer.send(channel, ...args);
 }
 
-function on(channel: string, callback: (...args: unknown[]) => void): () => void {
-  const handler = (_event: any, ...args: unknown[]) => callback(...args);
-  ipcRenderer.on(channel, handler);
-  return () => { ipcRenderer.removeListener(channel, handler); };
-}
-
-// ─── Expose API to Renderer ────────────────────────────────────────────
-// Channel names MUST match what src/utils/ipc.ts calls.
-
 contextBridge.exposeInMainWorld('electronAPI', {
+  // Global shortcut listeners
+  onGlobalShortcut: (channel: string, callback: () => void) => {
+    const validChannels = ['global:playPause', 'global:nextTrack', 'global:previousTrack', 'global:pause'];
+    if (validChannels.includes(channel)) {
+      ipcRenderer.on(channel, () => callback());
+    }
+  },
+
   player: {
     play: (trackId?: string) => send('player:play', trackId),
     pause: () => send('player:pause'),
     resume: () => send('player:resume'),
     seek: (time: number) => send('player:seek', time),
     setVolume: (volume: number) => send('player:setVolume', volume),
-    getCurrentTrack: () => invoke('player:getCurrentTrack'),
-    getProgress: () => invoke('player:getProgress'),
-    onTrackChange: (cb: (track: unknown) => void) => on('player:trackChange', cb),
-    onTimeUpdate: (cb: (data: unknown) => void) => on('player:timeUpdate', cb),
-    onPlaybackEnd: (cb: () => void) => on('player:playbackEnd', cb),
   },
 
   library: {
@@ -64,37 +56,35 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clearQueue: () => invoke('queue:clearQueue'),
   },
 
-  download: {
-    startDownload: (videoId: string, title: string, artist: string, thumbnail: string) =>
-      invoke('download:startDownload', videoId, title, artist, thumbnail),
-    downloadPlaylist: (tracks: any[]) => invoke('download:downloadPlaylist', tracks),
-    getDownloads: () => invoke('download:getDownloads'),
-    cancelDownload: (id: string) => invoke('download:cancelDownload', id),
-    removeDownload: (id: string) => invoke('download:removeDownload', id),
-    onBatchProgress: (cb: (data: any) => void) => on('download:batchProgress', cb),
-    onBatchComplete: (cb: (data: any) => void) => on('download:batchComplete', cb),
-  },
-
   search: {
     searchYouTube: (query: string, limit?: number) => invoke('search:youtube', query, limit),
-    getStreamUrl: (videoId: string) => invoke('search:getStreamUrl', videoId),
-    getLocalStreamPath: (videoId: string) => invoke('search:getLocalStreamPath', videoId),
-  },
-
-  import: {
-    importSpotifyPlaylist: (url: string) => invoke('import:importSpotifyPlaylist', url),
-    importYouTubePlaylist: (url: string) => invoke('import:importYouTubePlaylist', url),
-    importTracks: (tracks: unknown, targetPlaylistId?: string) => invoke('import:importTracks', tracks, targetPlaylistId),
-  },
-
-  lyrics: {
-    getLyrics: (track: string, artist: string, album?: string, duration?: number) =>
-      invoke('lyrics:getLyrics', track, artist, album, duration),
   },
 
   settings: {
     getSettings: () => invoke('settings:getSettings'),
     updateSettings: (partial: unknown) => invoke('settings:updateSettings', partial),
+    getSession: () => invoke('settings:getSession'),
+    saveSession: (session: unknown) => invoke('settings:saveSession', session),
+  },
+
+  stream: {
+    resolve: (videoId: string): Promise<{ url?: string; expiresAt?: number; bitrate?: number; error?: string }> => invoke('stream:resolve', videoId),
+    prefetch: (videoId: string): Promise<{ ok: boolean }> => invoke('stream:prefetch', videoId),
+    hasCached: (videoId: string): Promise<{ cached: boolean }> => invoke('stream:hasCached', videoId),
+    getCached: (videoId: string): Promise<{ url?: string; expiresAt?: number; bitrate?: number; error?: string }> => invoke('stream:getCached', videoId),
+  },
+
+  import: {
+    youtube: (url: string): Promise<{ name: string; tracks: Array<{ title: string; artist: string; duration: number; thumbnail: string; youtubeId: string }> }> =>
+      invoke('import:youtube', url),
+    spotify: (url: string): Promise<{ name: string; tracks: Array<{ title: string; artist: string; duration: number; thumbnail: string }> }> =>
+      invoke('import:spotify', url),
+    asPlaylist: (url: string, playlistName?: string): Promise<{
+      playlist: { id: string; name: string; trackCount: number };
+      imported: number;
+      total: number;
+      failed: number;
+    }> => invoke('import:asPlaylist', url, playlistName),
   },
 
   app: {
@@ -102,33 +92,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
     maximize: () => send('app:maximize'),
     close: () => send('app:close'),
     getVersion: (): Promise<string> => invoke('app:getVersion'),
-    openDownloadsFolder: () => invoke('shell:openDownloadsFolder'),
-    revealInFolder: (filePath: string) => invoke('shell:revealInFolder', filePath),
-  },
-
-  update: {
-    check: () => invoke('update:check'),
-    download: () => invoke('update:download'),
-    install: () => invoke('update:install'),
-    getState: () => invoke('update:getState'),
-    getVersion: (): Promise<string> => invoke('update:getVersion'),
-    onStatusChange: (cb: (state: any) => void) => on('update:status', cb),
-  },
-
-  analytics: {
-    startPlay: (trackId: string, duration: number) => invoke('analytics:startPlay', trackId, duration),
-    endPlay: (historyId: number, secondsPlayed: number, completed: boolean) =>
-      invoke('analytics:endPlay', historyId, secondsPlayed, completed),
-    recordPlay: (trackId: string, secondsPlayed: number, trackDuration: number, completed: boolean) =>
-      invoke('analytics:recordPlay', trackId, secondsPlayed, trackDuration, completed),
-    resolveTrackForPlay: (videoId: string) => invoke('analytics:resolveTrackForPlay', videoId),
-    getOverview: () => invoke('analytics:getOverview'),
-    getTopArtists: (limit?: number) => invoke('analytics:getTopArtists', limit),
-    getTopAlbums: (limit?: number) => invoke('analytics:getTopAlbums', limit),
-    getTopTracks: (limit?: number) => invoke('analytics:getTopTracks', limit),
-    getListeningByDay: (days?: number) => invoke('analytics:getListeningByDay', days),
-    getListeningByHour: () => invoke('analytics:getListeningByHour'),
-    getStreak: () => invoke('analytics:getStreak'),
-    getRecentPlays: (limit?: number) => invoke('analytics:getRecentPlays', limit),
   },
 });

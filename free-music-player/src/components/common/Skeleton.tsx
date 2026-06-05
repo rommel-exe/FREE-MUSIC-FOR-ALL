@@ -1,46 +1,45 @@
-import React from 'react';
-
-interface SkeletonProps {
-  variant?: 'text' | 'circular' | 'rectangular';
-  width?: string;
-  height?: string;
-  count?: number;
-  className?: string;
-}
-
-export function Skeleton({ variant = 'rectangular', width, height, count = 1, className = '' }: SkeletonProps) {
-  const baseClass = 'animate-pulse bg-surface-700/50 rounded';
-
-  const variants = {
-    text: 'h-4 rounded',
-    circular: 'rounded-full',
-    rectangular: 'rounded-lg',
-  };
-
+export function SkeletonTrack() {
   return (
-    <>
-      {Array.from({ length: count }).map((_, i) => (
-        <div
-          key={i}
-          className={`${baseClass} ${variants[variant]} ${className}`}
-          style={{ width: width || '100%', height: height || (variant === 'circular' ? '40px' : variant === 'text' ? '16px' : '120px') }}
-        />
-      ))}
-    </>
+    <div className="flex items-center gap-4 px-6 py-2 animate-pulse">
+      <div className="w-8 h-4 bg-white/10 rounded" />
+      <div className="w-10 h-10 rounded bg-white/10" />
+      <div className="flex-1">
+        <div className="h-4 bg-white/10 rounded w-3/4 mb-1" />
+        <div className="h-3 bg-white/5 rounded w-1/2" />
+      </div>
+      <div className="w-16 h-4 bg-white/10 rounded" />
+      <div className="w-12 h-4 bg-white/10 rounded" />
+    </div>
   );
 }
 
-export function TrackSkeleton({ count = 5 }: { count?: number }) {
+export function SkeletonGrid({ count = 6 }: { count?: number }) {
   return (
-    <div className="space-y-2">
+    <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="flex items-center gap-3 p-2 rounded-lg animate-pulse">
-          <div className="w-10 h-10 rounded bg-surface-700/50" />
-          <div className="flex-1 space-y-2">
-            <div className="h-3 bg-surface-700/50 rounded w-3/4" />
-            <div className="h-2 bg-surface-700/50 rounded w-1/2" />
+        <div key={i} className="flex items-center gap-3 bg-white/5 rounded-md overflow-hidden animate-pulse">
+          <div className="w-12 h-12 bg-white/10" />
+          <div className="flex-1">
+            <div className="h-4 bg-white/10 rounded w-3/4 mb-1" />
+            <div className="h-3 bg-white/5 rounded w-1/2" />
           </div>
-          <div className="w-12 h-3 bg-surface-700/50 rounded" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function SkeletonSearchResults() {
+  return (
+    <div className="space-y-1">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3 px-3 py-2 animate-pulse">
+          <div className="w-10 h-10 rounded bg-white/10" />
+          <div className="flex-1">
+            <div className="h-4 bg-white/10 rounded w-3/4 mb-1" />
+            <div className="h-3 bg-white/5 rounded w-1/2" />
+          </div>
+          <div className="w-10 h-4 bg-white/10 rounded" />
         </div>
       ))}
     </div>

@@ -1,380 +1,274 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { usePlayerStore } from '@/store/playerStore';
-import { useEQStore } from '@/store/eqStore';
-import { ipc } from '@/utils/ipc';
+import { mediaResolver } from '@/services/mediaResolver';
+import { prefetchEngine } from '@/engine/prefetchEngine';
+import { playbackController } from '@/engine/playbackController';
 
 /**
- * AudioPlayer — HTML5 audio backed by the custom `stream://` protocol,
- * routed through a Web Audio API EQ chain (5-band biquad filters).
+ * AudioPlayer — HTML5 Audio driven by the mediaResolver service.
  *
- * Flow:
- *   1. Renderer asks main for the stream URL via `ipc.search.getLocalStreamPath(videoId)`
- *   2. Main runs yt-dlp to download audio to /tmp/freemusic-<id>.m4a (≈6 sec)
- *   3. Main returns the `stream://<videoId>` URL
- *   4. Renderer plays it in an HTML5 <audio> element
- *   5. The audio element is tapped via createMediaElementSource and routed through
- *      a chain of 5 biquad filters (Bass → Low-Mid → Mid → High-Mid → Treble) +
- *      a preamp gain, then to the destination (speakers)
+ * Uses the `mediaResolver` service (which talks to the electron MediaResolver
+ * through IPC) to get a same-origin proxy URL for the current track.
  *
- * EQ changes from the eqStore are applied live without reloading the audio.
- * The 6-second YouTube sleep is unavoidable but a "Loading..." state is shown.
+ * Playback rules:
+ *  - One source of truth: only the `canplay` listener (or the loadAndPlay
+ *    fast-path) calls `audio.play()`. The `isPlaying` effect only handles
+ *    pause, so a stale audio src can never be played by accident.
+ *  - A `loadedVideoIdRef` tracks the youtubeId that the audio element is
+ *    *actually* loaded with. Any play call is gated on this matching the
+ *    current track — this prevents the race where the user changes tracks
+ *    mid-load and we end up playing the old audio.
+ *  - Prefetch cache is consulted before any IPC call so that the next
+ *    track in the queue plays without the 6-second yt-dlp delay.
+ *  - Progress is reported via the native `timeupdate` event (fires 4-66
+ *    times/sec while playing) rather than a `setInterval` poll.
+ *  - On resolve failure or audio error, the player advances to the next
+ *    track instead of getting stuck silently.
  */
 export function AudioPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const streamUrlRef = useRef<string | null>(null);
-  const loadingVideoIdRef = useRef<string | null>(null);
-  // Analytics: id of the play_history row for the currently-playing track
-  const currentHistoryIdRef = useRef<number | null>(null);
-  const playStartedAtRef = useRef<number>(0);
+  const currentVideoIdRef = useRef<string | null>(null);
+  const loadedVideoIdRef = useRef<string | null>(null);
+  const pendingPlayRef = useRef(false);
 
-  // Web Audio API graph refs
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
-  const preampGainRef = useRef<GainNode | null>(null);
-  const bassFilterRef = useRef<BiquadFilterNode | null>(null);
-  const lowMidFilterRef = useRef<BiquadFilterNode | null>(null);
-  const midFilterRef = useRef<BiquadFilterNode | null>(null);
-  const highMidFilterRef = useRef<BiquadFilterNode | null>(null);
-  const trebleFilterRef = useRef<BiquadFilterNode | null>(null);
-  const eqBypassGainRef = useRef<GainNode | null>(null);
+  // Create audio element once
+  useEffect(() => {
+    const audio = new Audio();
+    audio.preload = 'auto';
+    audioRef.current = audio;
 
-  const {
-    currentTrack,
-    isPlaying,
-    volume,
-    isMuted,
-    progress,
-    seekRequest,
-    setProgress,
-    setDuration,
-    setLoading,
-    nextTrack,
-  } = usePlayerStore();
+    audio.addEventListener('ended', () => {
+      usePlayerStore.getState().nextTrack();
+    });
 
-  const { enabled: eqEnabled, bands: eqBands } = useEQStore();
+    audio.addEventListener('error', (e) => {
+      const err = e as ErrorEvent;
+      console.error('[AudioPlayer] Audio error:', err.message, err.type);
+      usePlayerStore.getState().setLoading(false);
+      // Advance to the next track so the user isn't stuck on a broken track.
+      // The 500ms delay lets React commit the loading state first.
+      setTimeout(() => {
+        if (usePlayerStore.getState().currentTrack?.youtubeId === currentVideoIdRef.current) {
+          usePlayerStore.getState().nextTrack();
+        }
+      }, 500);
+    });
 
-  // Refs for latest values
-  const isPlayingRef = useRef(isPlaying);
-  const volumeRef = useRef(volume);
-  const isMutedRef = useRef(isMuted);
-  const eqEnabledRef = useRef(eqEnabled);
-  const eqBandsRef = useRef(eqBands);
-  isPlayingRef.current = isPlaying;
-  volumeRef.current = volume;
-  isMutedRef.current = isMuted;
-  eqEnabledRef.current = eqEnabled;
-  eqBandsRef.current = eqBands;
+    audio.addEventListener('loadedmetadata', () => {
+      const dur = audio.duration;
+      if (dur > 0 && Number.isFinite(dur)) {
+        usePlayerStore.getState().setDuration(dur);
+        // Keep the playbackController's duration in sync with the audio
+        // element so syncFromEngine() reads the real value (not the
+        // stale value frozen at the last play() call).
+        playbackController.setDuration(dur);
+      }
+      usePlayerStore.getState().setLoading(false);
+      playbackController.setLoading(false);
+    });
 
-  // ─── Build the Web Audio API graph (once, guarded against StrictMode) ──
-  const graphBuiltRef = useRef(false);
+    // Primary play trigger. Fires when the audio element has buffered enough
+    // data to begin playback. We gate on the loaded videoId matching the
+    // current track — otherwise a late `canplay` from a previous track
+    // (e.g. user changed tracks mid-load) could start playing the wrong song.
+    audio.addEventListener('canplay', () => {
+      usePlayerStore.getState().setLoading(false);
+      if (
+        pendingPlayRef.current &&
+        loadedVideoIdRef.current === currentVideoIdRef.current &&
+        usePlayerStore.getState().isPlaying
+      ) {
+        pendingPlayRef.current = false;
+        audio.play().catch((err) => {
+          console.error('[AudioPlayer] Deferred play failed:', err);
+        });
+      }
+    });
+
+    audio.addEventListener('playing', () => {
+      usePlayerStore.getState().setLoading(false);
+      playbackController.setLoading(false);
+    });
+
+    audio.addEventListener('waiting', () => {
+      usePlayerStore.getState().setLoading(true);
+      playbackController.setLoading(true);
+    });
+
+    // Native `timeupdate` event — fires 4-66 times per second while audio
+    // is playing. Automatically stops firing when the audio is paused, so
+    // it doubles as a "is playing" check. No polling needed.
+    audio.addEventListener('timeupdate', () => {
+      if (loadedVideoIdRef.current !== currentVideoIdRef.current) return;
+      const time = audio.currentTime;
+      // Mirror into the playbackController so syncFromEngine() — called by
+      // shuffle, repeat, volume, mute, etc. — reads the real position
+      // instead of the stale value frozen at the last play()/seek().
+      // Without this, the store's progress would be reset to 0 on every
+      // sync, causing the seek effect to rewind the track to 0.
+      playbackController.setProgress(time);
+      usePlayerStore.getState().setProgress(time);
+    });
+
+    return () => {
+      audio.pause();
+      audio.src = '';
+      audioRef.current = null;
+    };
+  }, []);
+
+  // Load & play when track changes
+  const currentTrack = usePlayerStore((s) => s.currentTrack);
+
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
-    // Guard against React 18 StrictMode double-mount: createMediaElementSource
-    // can only be called ONCE per HTMLAudioElement, otherwise it throws.
-    if (graphBuiltRef.current || sourceNodeRef.current) {
-      console.log('[AudioPlayer] Graph already built, skipping');
-      return;
-    }
-    graphBuiltRef.current = true;
-
-    try {
-      const Ctx = window.AudioContext || (window as any).webkitAudioContext;
-      const ctx = new Ctx();
-      audioContextRef.current = ctx;
-
-      // Create source from the <audio> element
-      const source = ctx.createMediaElementSource(audio);
-      sourceNodeRef.current = source;
-
-      // Preamp gain (master volume trim for EQ)
-      const preamp = ctx.createGain();
-      preamp.gain.value = 1;
-      preampGainRef.current = preamp;
-
-      // 5 biquad filters at standard frequency bands
-      // - Bass (60 Hz): lowshelf
-      // - Low-Mid (250 Hz): peaking
-      // - Mid (1 kHz): peaking
-      // - High-Mid (4 kHz): peaking
-      // - Treble (12 kHz): highshelf
-      const bass = ctx.createBiquadFilter();
-      bass.type = 'lowshelf';
-      bass.frequency.value = 60;
-      bass.gain.value = 0;
-      bassFilterRef.current = bass;
-
-      const lowMid = ctx.createBiquadFilter();
-      lowMid.type = 'peaking';
-      lowMid.frequency.value = 250;
-      lowMid.Q.value = 1.0;
-      lowMid.gain.value = 0;
-      lowMidFilterRef.current = lowMid;
-
-      const mid = ctx.createBiquadFilter();
-      mid.type = 'peaking';
-      mid.frequency.value = 1000;
-      mid.Q.value = 1.0;
-      mid.gain.value = 0;
-      midFilterRef.current = mid;
-
-      const highMid = ctx.createBiquadFilter();
-      highMid.type = 'peaking';
-      highMid.frequency.value = 4000;
-      highMid.Q.value = 1.0;
-      highMid.gain.value = 0;
-      highMidFilterRef.current = highMid;
-
-      const treble = ctx.createBiquadFilter();
-      treble.type = 'highshelf';
-      treble.frequency.value = 12000;
-      treble.gain.value = 0;
-      trebleFilterRef.current = treble;
-
-      // Bypass path: a single gain node at gain=1 that, when EQ is disabled,
-      // carries the audio around the filter chain
-      const bypass = ctx.createGain();
-      bypass.gain.value = 0; // start with EQ in the signal path
-      eqBypassGainRef.current = bypass;
-
-      // EQ path
-      const eqThrough = ctx.createGain();
-      eqThrough.gain.value = 1; // start with EQ active
-
-      // Wire the graph:
-      //   source → preamp → [bass → lowMid → mid → highMid → treble] (eq path)
-      //                       ↘ bypass path
-      //   both paths → destination
-      source.connect(preamp);
-
-      // EQ path
-      preamp.connect(bass);
-      bass.connect(lowMid);
-      lowMid.connect(mid);
-      mid.connect(highMid);
-      highMid.connect(treble);
-      treble.connect(eqThrough);
-      eqThrough.connect(ctx.destination);
-
-      // Bypass path (just passes through at gain 0 by default)
-      preamp.connect(bypass);
-      bypass.connect(ctx.destination);
-
-      console.log('[AudioPlayer] Web Audio API graph initialized');
-    } catch (err) {
-      console.error('[AudioPlayer] Failed to build Web Audio graph:', err);
-    }
-
-    return () => {
-      // Don't tear down the graph in cleanup — React 18 StrictMode re-runs
-      // effects in dev, and createMediaElementSource can only be called once
-      // per <audio> element. The graph lives for the component's lifetime
-      // and the browser cleans up when the page unloads.
-    };
-  }, []);
-
-  // ─── Apply EQ changes live ────────────────────────────────────────────
-  useEffect(() => {
-    const ctx = audioContextRef.current;
-    if (!ctx) return;
-
-    // Map preamp dB (-12 to +12) to a linear gain (0.25 to 4)
-    // 10^(dB/20) — but we also want to keep a sensible range
-    const preampLinear = Math.pow(10, eqBands.preamp / 20);
-    if (preampGainRef.current) {
-      preampGainRef.current.gain.setTargetAtTime(preampLinear, ctx.currentTime, 0.02);
-    }
-    if (bassFilterRef.current) {
-      bassFilterRef.current.gain.setTargetAtTime(eqBands.bass, ctx.currentTime, 0.02);
-    }
-    if (lowMidFilterRef.current) {
-      lowMidFilterRef.current.gain.setTargetAtTime(eqBands.lowMid, ctx.currentTime, 0.02);
-    }
-    if (midFilterRef.current) {
-      midFilterRef.current.gain.setTargetAtTime(eqBands.mid, ctx.currentTime, 0.02);
-    }
-    if (highMidFilterRef.current) {
-      highMidFilterRef.current.gain.setTargetAtTime(eqBands.highMid, ctx.currentTime, 0.02);
-    }
-    if (trebleFilterRef.current) {
-      trebleFilterRef.current.gain.setTargetAtTime(eqBands.treble, ctx.currentTime, 0.02);
-    }
-
-    // Toggle bypass vs EQ path
-    if (eqBypassGainRef.current) {
-      eqBypassGainRef.current.gain.setTargetAtTime(eqEnabled ? 0 : 1, ctx.currentTime, 0.02);
-    }
-
-    console.log(`[AudioPlayer] EQ ${eqEnabled ? 'ON' : 'OFF'} — bands:`, JSON.stringify(eqBands));
-  }, [eqEnabled, eqBands]);
-
-  // ─── Resolve stream URL when track changes ───────────────────────────
-  useEffect(() => {
-    if (!currentTrack) {
-      streamUrlRef.current = null;
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.removeAttribute('src');
-      }
-      // End any pending analytics play session
-      endCurrentPlayIfAny(0, false);
+    if (!currentTrack?.youtubeId) {
+      currentVideoIdRef.current = null;
+      loadedVideoIdRef.current = null;
+      audio.pause();
+      audio.src = '';
       return;
     }
 
     const videoId = currentTrack.youtubeId;
+    if (currentVideoIdRef.current === videoId) return;
+    currentVideoIdRef.current = videoId;
 
-    if (!videoId) {
-      console.warn('[AudioPlayer] Track has no youtubeId, cannot play');
-      return;
-    }
+    // ── Critical: stop the old audio NOW, synchronously. ──
+    // If we wait until after `mediaResolver.resolve` (which can take up
+    // to 6s on a cache miss), the user hears the previous track playing
+    // while the UI already shows the new one. That's the "everything
+    // desyncs" bug. Pause + clear the loaded ref so the timeupdate
+    // handler stops reporting progress for the old track.
+    audio.pause();
+    loadedVideoIdRef.current = null;
 
-    // Skip if same as already loaded
-    if (streamUrlRef.current && streamUrlRef.current.includes(videoId)) {
-      console.log('[AudioPlayer] Same video, just play/pause');
-      return;
-    }
+    let cancelled = false;
 
-    loadingVideoIdRef.current = videoId;
-    setLoading(true);
-    console.log(`[AudioPlayer] Resolving stream URL for: ${videoId}`);
+    const loadAndPlay = async () => {
+      usePlayerStore.getState().setLoading(true);
+      pendingPlayRef.current = true;
 
-    (async () => {
-      try {
-        const url = await ipc.search.getLocalStreamPath(videoId);
-        if (loadingVideoIdRef.current !== videoId) {
-          console.log('[AudioPlayer] Track changed during load, discarding');
-          return;
-        }
-        console.log(`[AudioPlayer] Got stream URL: ${url}`);
-        streamUrlRef.current = url;
-        if (audioRef.current) {
-          audioRef.current.src = url;
-          audioRef.current.load();
-          // Resume the audio context if it was suspended (Chromium auto-suspends)
-          if (audioContextRef.current?.state === 'suspended') {
-            audioContextRef.current.resume().catch(() => {});
-          }
-          if (isPlayingRef.current) {
-            // Record analytics: this is when the user actually starts listening
-            const trackId = currentTrack.id || videoId;
-            const trackDuration = currentTrack.duration || 0;
-            try {
-              const historyId = await ipc.analytics.startPlay(trackId, trackDuration);
-              currentHistoryIdRef.current = historyId;
-              playStartedAtRef.current = Date.now();
-              console.log(`[AudioPlayer] Analytics: started play #${historyId} for ${trackId}`);
-            } catch (e) {
-              console.warn('[AudioPlayer] analytics:startPlay failed:', e);
-            }
-            try {
-              await audioRef.current.play();
-              console.log('[AudioPlayer] Playback started');
-            } catch (e) {
-              console.error('[AudioPlayer] play() failed:', e);
-            }
-          }
-        }
-      } catch (err: any) {
-        console.error(`[AudioPlayer] Failed to resolve stream URL for ${videoId}:`, err);
-        setTimeout(() => nextTrack(), 1000);
-      } finally {
-        if (loadingVideoIdRef.current === videoId) {
-          setLoading(false);
-        }
+      // 1) Prefetch cache first — this is the fast path. If the next track
+      //    was prefetched while the previous one was playing, we skip the
+      //    6-second yt-dlp resolve entirely.
+      let source = prefetchEngine.getSource(videoId);
+
+      // 2) Fall back to the IPC resolve (which itself is cache-aware on
+      //    the main process — so even without a renderer-side prefetch,
+      //    a second resolve for the same videoId is instant).
+      if (!source) {
+        source = await mediaResolver.resolve(videoId);
       }
-    })();
-  }, [currentTrack?.id, currentTrack?.youtubeId]);
 
-  /**
-   * Mark the current play session as ended. Safe to call multiple times.
-   * The `secondsPlayed` is the actual elapsed listening time, not the song length.
-   */
-  function endCurrentPlayIfAny(secondsPlayed: number, completed: boolean) {
-    const id = currentHistoryIdRef.current;
-    if (id == null) return;
-    currentHistoryIdRef.current = null;
-    ipc.analytics.endPlay(id, Math.max(0, Math.floor(secondsPlayed)), completed).catch((e) => {
-      console.warn('[AudioPlayer] analytics:endPlay failed:', e);
-    });
-  }
+      if (cancelled) return;
 
-  // ─── React to play/pause ──────────────────────────────────────────────
+      if (!source) {
+        console.error('[AudioPlayer] Failed to resolve media for:', videoId);
+        usePlayerStore.getState().setLoading(false);
+        pendingPlayRef.current = false;
+        // Auto-advance on resolve failure so the user isn't stuck.
+        setTimeout(() => {
+          if (usePlayerStore.getState().currentTrack?.youtubeId === videoId) {
+            usePlayerStore.getState().nextTrack();
+          }
+        }, 500);
+        return;
+      }
+
+      // If the user wanted to play, kick it off. The `canplay` listener
+      // (or the fast-path below if the data is already buffered) will
+      // call audio.play().
+      audio.pause();
+      audio.src = source.audioUrl;
+      loadedVideoIdRef.current = videoId;
+      audio.load();
+
+      // Fast path: if the audio is already buffered enough to play,
+      // start it immediately. Otherwise wait for `canplay`.
+      if (audio.readyState >= 3 && usePlayerStore.getState().isPlaying) {
+        pendingPlayRef.current = false;
+        audio.play().catch((err) => {
+          console.error('[AudioPlayer] Play failed:', err);
+        });
+      }
+    };
+
+    loadAndPlay();
+
+    return () => {
+      cancelled = true;
+      // Clear pending play so a late `canplay` for the old src can't fire.
+      pendingPlayRef.current = false;
+    };
+  }, [currentTrack?.youtubeId]);
+
+  // Play/Pause sync — only handles pause. Playback initiation is owned by
+  // `loadAndPlay` (via the `canplay` listener / fast path). This avoids the
+  // race where the isPlaying effect would call `audio.play()` on a stale
+  // src while a new track is still being resolved.
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
+
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
+
     if (isPlaying) {
-      // Resume the audio context (browser auto-suspends on user gesture requirements)
-      audioContextRef.current?.resume().catch(() => {});
-      if (audio.src) {
-        audio.play().catch((e) => console.error('[AudioPlayer] play() failed:', e));
+      // The audio is already loaded and the user wants to play (e.g. they
+      // pressed play after a pause on the same track).
+      if (
+        audio.src &&
+        loadedVideoIdRef.current === currentVideoIdRef.current &&
+        audio.readyState >= 3
+      ) {
+        audio.play().catch(() => {});
+      } else {
+        // Audio isn't ready yet — defer play to the `canplay` listener.
+        pendingPlayRef.current = true;
       }
     } else {
       audio.pause();
-      // Analytics: end the play session on pause. The user stopped listening.
-      const played = audio.currentTime || 0;
-      const dur = audio.duration || 0;
-      const completed = dur > 0 && played >= dur * 0.95;
-      endCurrentPlayIfAny(played, completed);
+      pendingPlayRef.current = false;
     }
   }, [isPlaying]);
 
-  // ─── React to volume/mute ─────────────────────────────────────────────
+  // Volume sync
+  const volume = usePlayerStore((s) => s.volume);
+  const isMuted = usePlayerStore((s) => s.isMuted);
+
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
     audio.volume = isMuted ? 0 : volume;
   }, [volume, isMuted]);
 
-  // ─── React to seek requests ───────────────────────────────────────────
+  // Seek sync — only react to user-driven seeks, not the progress interval.
+  // The progress interval now writes via `timeupdate` (which doesn't change
+  // the store in a way that would re-trigger this effect more than once per
+  // ~100ms). We use a 2s debounce window to be safe.
+  const progress = usePlayerStore((s) => s.progress);
+
   useEffect(() => {
     const audio = audioRef.current;
-    if (!seekRequest || !audio) return;
-    try {
-      audio.currentTime = seekRequest.time;
-    } catch (e) {
-      console.error('[AudioPlayer] seek failed:', e);
+    if (!audio || !currentVideoIdRef.current) return;
+
+    // Skip if we're mid-track-change. During a skip, the store's progress
+    // jumps to 0 and the audio's currentTime is still the old track's
+    // position — seeking here would rewind the OLD audio, which is exactly
+    // the desync symptom. The new track's load will set loadedVideoIdRef
+    // and the seek logic kicks in normally afterwards.
+    if (loadedVideoIdRef.current !== currentVideoIdRef.current) return;
+
+    // Only seek if the user explicitly changed progress (e.g. clicked the
+    // progress bar) — the timeupdate event also calls setProgress, but
+    // those updates are within ~0.5s of the audio's current time, so this
+    // diff-check already filters them out.
+    if (Math.abs(audio.currentTime - progress) > 2) {
+      audio.currentTime = progress;
     }
-  }, [seekRequest]);
+  }, [progress]);
 
-  // ─── Audio event handlers ─────────────────────────────────────────────
-  const handleTimeUpdate = useCallback(() => {
-    const audio = audioRef.current;
-    if (audio) setProgress(audio.currentTime);
-  }, [setProgress]);
-
-  const handleLoadedMetadata = useCallback(() => {
-    const audio = audioRef.current;
-    if (audio) {
-      console.log(`[AudioPlayer] Loaded metadata, duration: ${audio.duration}s`);
-      setDuration(audio.duration || 0);
-    }
-  }, [setDuration]);
-
-  const handleEnded = useCallback(() => {
-    console.log('[AudioPlayer] Track ended, playing next');
-    // Analytics: ended naturally → completed
-    const audio = audioRef.current;
-    if (audio) endCurrentPlayIfAny(audio.duration || 0, true);
-    nextTrack();
-  }, [nextTrack]);
-
-  const handleError = useCallback((_e: any) => {
-    console.error('[AudioPlayer] Audio error');
-    // Analytics: errored out → not completed
-    endCurrentPlayIfAny(0, false);
-    setTimeout(() => nextTrack(), 500);
-  }, [nextTrack]);
-
-  return (
-    <audio
-      ref={audioRef}
-      onTimeUpdate={handleTimeUpdate}
-      onLoadedMetadata={handleLoadedMetadata}
-      onEnded={handleEnded}
-      onError={handleError}
-      preload="auto"
-      style={{ display: 'none' }}
-    />
-  );
+  return null;
 }

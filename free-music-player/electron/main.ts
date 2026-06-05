@@ -1,18 +1,19 @@
-import { app, BrowserWindow, ipcMain, nativeTheme } from 'electron';
-import { initAutoUpdater, checkForUpdates, downloadUpdate, installUpdate, getUpdateState, getAppVersion } from './services/auto-updater';
-import { registerUpdateHandlers } from './ipc/update';
-import { registerAnalyticsHandlers } from './ipc/analytics';
-import * as path from 'path';
+import { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut } from 'electron';
+import * as path from 'node:path';
+
+// Bypass autoplay restrictions for audio streaming
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+app.commandLine.appendSwitch('disable-features', 'BlockInsecurePrivateNetworkRequests');
 import { initDatabase } from './utils/database';
 import { registerPlayerHandlers } from './ipc/player';
 import { registerLibraryHandlers } from './ipc/library';
 import { registerPlaylistHandlers } from './ipc/playlist';
 import { registerQueueHandlers } from './ipc/queue';
 import { registerSearchHandlers } from './ipc/search';
-import { registerDownloadHandlers } from './ipc/download';
-import { registerImportHandlers } from './ipc/import';
-import { registerLyricsHandlers } from './ipc/lyrics';
 import { registerSettingsHandlers } from './ipc/settings';
+import { registerStreamHandlers } from './ipc/stream';
+import { registerImportHandlers } from './ipc/import';
+import { mediaResolver } from './services/mediaResolver';
 
 // ─── Prevent multiple instances ─────────────────────────────────────────
 const gotTheLock = app.requestSingleInstanceLock();
@@ -53,12 +54,10 @@ function createMainWindow(): BrowserWindow {
     height: WINDOW_HEIGHT,
     minWidth: MIN_WIDTH,
     minHeight: MIN_HEIGHT,
-    backgroundColor: '#1C1C1E',
+    backgroundColor: '#0a0a0a',
     frame: false,
     titleBarStyle: 'hidden',
     trafficLightPosition: { x: 12, y: 8 },
-    vibrancy: 'under-window',
-    visualEffectState: 'active',
     webPreferences: {
       preload: getPreloadPath(),
       contextIsolation: true,
@@ -67,32 +66,16 @@ function createMainWindow(): BrowserWindow {
       webSecurity: true,
     },
     show: false,
-    icon: path.join(__dirname, '../resources/icons/icon.png'),
   });
 
-  // Gracefully show window when ready
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
   });
 
-  // Load the renderer
   mainWindow.loadURL(getRendererUrl());
 
-  // Open DevTools in development
-  if (isDev()) {
-    mainWindow.webContents.once('did-finish-load', () => {
-      mainWindow?.webContents.openDevTools({ mode: 'detach' });
-    });
-  }
+  // DevTools can be opened manually with Cmd+Shift+I
 
-  // Forward renderer console messages to main process log
-  mainWindow.webContents.on('console-message', (_event, _level, message, _line, _source) => {
-    const prefix = '[Renderer]';
-    if (_level >= 2) console.error(prefix, message);
-    else console.log(prefix, message);
-  });
-
-  // Cleanup reference
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -103,9 +86,7 @@ function createMainWindow(): BrowserWindow {
 // ─── Register window control IPC ────────────────────────────────────────
 
 function registerWindowControls(): void {
-  ipcMain.on('app:minimize', () => {
-    mainWindow?.minimize();
-  });
+  ipcMain.on('app:minimize', () => mainWindow?.minimize());
 
   ipcMain.on('app:maximize', () => {
     if (mainWindow?.isMaximized()) {
@@ -115,93 +96,46 @@ function registerWindowControls(): void {
     }
   });
 
-  ipcMain.on('app:close', () => {
-    mainWindow?.close();
-  });
+  ipcMain.on('app:close', () => mainWindow?.close());
 
-  ipcMain.handle('app:getVersion', () => {
-    return app.getVersion();
-  });
-
-  ipcMain.on('window:setMiniPlayer', (_event, mini: boolean) => {
-    if (!mainWindow) return;
-
-    if (mini) {
-      mainWindow.setMinimumSize(320, 90);
-      mainWindow.setSize(320, 90);
-      mainWindow.setAlwaysOnTop(true, 'floating');
-    } else {
-      mainWindow.setAlwaysOnTop(false);
-      mainWindow.setMinimumSize(MIN_WIDTH, MIN_HEIGHT);
-      mainWindow.setSize(WINDOW_WIDTH, WINDOW_HEIGHT);
-      mainWindow.center();
-    }
-  });
-
-  ipcMain.on('window:setAlwaysOnTop', (_event, onTop: boolean) => {
-    mainWindow?.setAlwaysOnTop(onTop, 'floating');
-  });
+  ipcMain.handle('app:getVersion', () => app.getVersion());
 }
 
 // ─── App lifecycle ──────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
-  // Set app user model ID for Windows notifications
-  if (process.platform === 'win32') {
-    app.setAppUserModelId('com.freemusicplayer.app');
-  }
-
-  // Set dark theme
   nativeTheme.themeSource = 'dark';
 
-  // Initialise database
   initDatabase();
 
-  // Register all IPC handlers
-  // Open downloads folder in OS file explorer
-  ipcMain.handle('shell:openDownloadsFolder', () => {
-    const { shell } = require('electron');
-    const path = require('path');
-    const fs = require('fs');
-    const downloadsPath = path.join(app.getPath('music'), 'FreeMusicPlayer', 'downloads');
-    if (!fs.existsSync(downloadsPath)) {
-      fs.mkdirSync(downloadsPath, { recursive: true });
-    }
-    return shell.openPath(downloadsPath);
-  });
-
-  // Reveal a specific file in OS file explorer
-  ipcMain.handle('shell:revealInFolder', (_event, filePath: string) => {
-    const { shell } = require('electron');
-    if (filePath && require('fs').existsSync(filePath)) {
-      shell.showItemInFolder(filePath);
-    } else {
-      const path = require('path');
-      const downloadsPath = path.join(app.getPath('music'), 'FreeMusicPlayer', 'downloads');
-      shell.openPath(downloadsPath);
-    }
-  });
+  await mediaResolver.start();
 
   registerPlayerHandlers();
   registerLibraryHandlers();
   registerPlaylistHandlers();
   registerQueueHandlers();
   registerSearchHandlers();
-  registerDownloadHandlers();
-  registerImportHandlers();
-  registerLyricsHandlers();
   registerSettingsHandlers();
-  registerUpdateHandlers();
-  registerAnalyticsHandlers();
+  registerStreamHandlers();
+  registerImportHandlers();
   registerWindowControls();
 
-  // Create the main window
+  // Global media key shortcuts
+  globalShortcut.register('MediaPlayPause', () => {
+    mainWindow?.webContents.send('global:playPause');
+  });
+  globalShortcut.register('MediaNextTrack', () => {
+    mainWindow?.webContents.send('global:nextTrack');
+  });
+  globalShortcut.register('MediaPreviousTrack', () => {
+    mainWindow?.webContents.send('global:previousTrack');
+  });
+  globalShortcut.register('MediaStop', () => {
+    mainWindow?.webContents.send('global:pause');
+  });
+
   createMainWindow();
 
-  // Wire up auto-updater (only does anything in packaged builds)
-  initAutoUpdater(mainWindow!);
-
-  // macOS: re-create window when dock icon is clicked
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createMainWindow();
@@ -209,14 +143,12 @@ app.whenReady().then(async () => {
   });
 });
 
-// ── Quit when all windows are closed (except on macOS) ──────────────────
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
-// ── Second instance lock ────────────────────────────────────────────────
 app.on('second-instance', () => {
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore();
@@ -224,70 +156,10 @@ app.on('second-instance', () => {
   }
 });
 
-// ── Register custom protocol for streaming local audio files ───────────
-import { protocol, net } from 'electron';
-import { pathToFileURL } from 'url';
-import * as fs from 'fs';
-import * as pathModule from 'path';
-
-protocol.registerSchemesAsPrivileged([
-  { scheme: 'stream', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, bypassCSP: true } },
-]);
-
-app.whenReady().then(() => {
-  protocol.handle('stream', async (request) => {
-    try {
-      const url = new URL(request.url);
-      // stream://videoId  →  /tmp/freemusic-videoId.m4a
-      const videoId = url.hostname || url.pathname.replace(/^\/+/, '');
-      const filePath = pathModule.join(require('os').tmpdir(), `freemusic-${videoId}.m4a`);
-
-      if (!fs.existsSync(filePath)) {
-        return new Response('File not found', { status: 404 });
-      }
-
-      const stat = fs.statSync(filePath);
-      const range = request.headers.get('range');
-
-      if (range) {
-        const parts = range.replace(/bytes=/, '').split('-');
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
-        const chunkSize = end - start + 1;
-        const stream = fs.createReadStream(filePath, { start, end });
-        // Handle abort gracefully
-        request.signal.addEventListener('abort', () => { try { stream.destroy(); } catch {} });
-        return new Response(stream as any, {
-          status: 206,
-          headers: {
-            'Content-Type': 'audio/mp4',
-            'Content-Length': String(chunkSize),
-            'Content-Range': `bytes ${start}-${end}/${stat.size}`,
-            'Accept-Ranges': 'bytes',
-          },
-        });
-      }
-
-      const stream = fs.createReadStream(filePath);
-      request.signal.addEventListener('abort', () => { try { stream.destroy(); } catch {} });
-      return new Response(stream as any, {
-        status: 200,
-        headers: {
-          'Content-Type': 'audio/mp4',
-          'Content-Length': String(stat.size),
-          'Accept-Ranges': 'bytes',
-        },
-      });
-    } catch (err: any) {
-      console.error('[stream protocol] Error:', err.message);
-      return new Response('Internal error', { status: 500 });
-    }
-  });
+app.on('web-contents-created', (_event, contents) => {
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
 });
 
-// ── Prevent new window creation ─────────────────────────────────────────
-app.on('web-contents-created', (_event, contents) => {
-  contents.setWindowOpenHandler(() => {
-    return { action: 'deny' };
-  });
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });
