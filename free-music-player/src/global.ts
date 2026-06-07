@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 interface StreamAPI {
-  resolve(videoId: string): Promise<{
+  resolve(videoId: string, metadata?: { artist: string; title: string }): Promise<{
     url?: string;
     expiresAt?: number;
     bitrate?: number;
+    videoId?: string;
     error?: string;
   } | undefined>;
   prefetch(videoId: string): Promise<{ ok: boolean } | undefined>;
@@ -12,6 +13,7 @@ interface StreamAPI {
     url?: string;
     expiresAt?: number;
     bitrate?: number;
+    videoId?: string;
     error?: string;
   } | undefined>;
 }
@@ -54,6 +56,8 @@ interface ElectronAPI {
   };
   search: {
     searchYouTube: (query: string, limit?: number) => Promise<unknown>;
+    verify: (results: Array<{ id: string; title: string; artist: string }>) => Promise<{ ok: boolean }>;
+    getVerified: (videoIds: string[]) => Promise<Record<string, { playable: boolean; trustScore: number }>>;
   };
   settings: {
     getSettings: () => Promise<unknown>;
@@ -78,7 +82,7 @@ interface ElectronAPI {
     close: () => void;
     getVersion: () => Promise<string | undefined>;
   };
-  onGlobalShortcut?: (channel: string, callback: () => void) => void;
+  onGlobalShortcut?: (channel: string, callback: () => void) => (() => void) | void;
 }
 
 declare global {

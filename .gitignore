@@ -1,0 +1,32 @@
+# === Generated / Build Output ===
+free-music-player/dist/
+free-music-player/dist-electron/
+free-music-player/release/
+graphify-out/
+
+# === Dependencies ===
+free-music-player/node_modules/
+
+# === Vendored / Minified Scripts ===
+free-music-player/*player-script.js
+
+# === Build Artifacts ===
+*.tsbuildinfo
+*.log
+logs/
+
+# === OS Junk ===
+.DS_Store
+Thumbs.db
+
+# === Editor Junk ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# === Env ===
+.env
+.env.local
+.env.*.local

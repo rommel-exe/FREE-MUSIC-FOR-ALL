@@ -2,7 +2,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { usePlayerStore } from '@/store/playerStore';
 
 function formatTime(seconds: number): string {
-  if (!seconds || !isFinite(seconds)) return '0:00';
+  if (!seconds || !Number.isFinite(seconds)) return '0:00';
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, '0')}`;
@@ -98,12 +98,12 @@ export function MiniPlayer() {
           </button>
         </div>
 
-        {/* Back to full view */}
+        {/* Back to main view */}
         <button
           onClick={() => setFullPlayerOpen(false)}
           className="w-full mt-4 py-2 text-white/40 hover:text-white text-sm transition-colors"
         >
-          Back to Full View
+          Back to Player
         </button>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import * as db from '../utils/database';
+import { validate, SettingsPartialSchema, SessionSchema } from '../utils/validate';
 
 export function registerSettingsHandlers(): void {
   ipcMain.handle('settings:getSettings', () => {
@@ -15,7 +16,8 @@ export function registerSettingsHandlers(): void {
     'settings:updateSettings',
     (_event, partial: Record<string, string | number | boolean>) => {
       try {
-        db.updateSettings(partial);
+        const validated = validate(SettingsPartialSchema, partial, 'settings partial');
+        db.updateSettings(validated as Record<string, string | number | boolean>);
         return db.getSettings();
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -44,7 +46,8 @@ export function registerSettingsHandlers(): void {
 
   ipcMain.handle('settings:saveSession', (_event, session: Record<string, unknown>) => {
     try {
-      db.saveSession(session);
+      const validated = validate(SessionSchema, session, 'session');
+      db.saveSession(validated);
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

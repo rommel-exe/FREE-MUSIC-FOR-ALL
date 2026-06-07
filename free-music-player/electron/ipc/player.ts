@@ -1,6 +1,8 @@
 import { ipcMain } from 'electron';
 import * as db from '../utils/database';
 import type { Track } from '../utils/types';
+import { z } from 'zod';
+import { validate, VolumeSchema } from '../utils/validate';
 
 let currentTrack: Track | null = null;
 let isPlaying = false;
@@ -30,7 +32,7 @@ export function registerPlayerHandlers(): void {
       const track = db.getTrackById(trackId);
       if (track) {
         currentTrack = track;
-        try { db.addRecentlyPlayed(track.id); } catch {}
+        try { db.addRecentlyPlayed(track.id); } catch (err) { console.error('[player] addRecentlyPlayed failed:', err); }
       }
     }
     isPlaying = true;
@@ -41,9 +43,17 @@ export function registerPlayerHandlers(): void {
 
   ipcMain.on('player:resume', () => { isPlaying = true; });
 
-  ipcMain.on('player:seek', (_event, time: number) => { currentTime = time; });
+  ipcMain.on('player:seek', (_event, time: unknown) => {
+    try {
+      const validatedTime = validate(z.number().min(0), time, 'seek time');
+      currentTime = validatedTime;
+    } catch (err) { console.error('[player] seek failed:', err); }
+  });
 
-  ipcMain.on('player:setVolume', (_event, vol: number) => {
-    volume = Math.max(0, Math.min(1, vol));
+  ipcMain.on('player:setVolume', (_event, vol: unknown) => {
+    try {
+      const validatedVol = validate(VolumeSchema, vol, 'volume');
+      volume = validatedVol;
+    } catch (err) { console.error('[player] setVolume failed:', err); }
   });
 }

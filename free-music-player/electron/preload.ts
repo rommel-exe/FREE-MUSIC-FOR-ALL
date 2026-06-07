@@ -13,8 +13,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onGlobalShortcut: (channel: string, callback: () => void) => {
     const validChannels = ['global:playPause', 'global:nextTrack', 'global:previousTrack', 'global:pause'];
     if (validChannels.includes(channel)) {
-      ipcRenderer.on(channel, () => callback());
+      const wrapper = () => callback();
+      ipcRenderer.on(channel, wrapper);
+      return () => {
+        ipcRenderer.removeListener(channel, wrapper);
+      };
     }
+    return () => {};
   },
 
   player: {
@@ -58,6 +63,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   search: {
     searchYouTube: (query: string, limit?: number) => invoke('search:youtube', query, limit),
+    /** Trigger background verification for search results. */
+    verify: (results: Array<{ id: string; title: string; artist: string }>) =>
+      invoke('search:verify', results),
+    /** Batch-lookup verification status for video IDs. Returns Record<videoId, VerifiedTrack>. */
+    getVerified: (videoIds: string[]) => invoke('search:getVerified', videoIds),
   },
 
   settings: {
@@ -68,10 +78,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   stream: {
-    resolve: (videoId: string): Promise<{ url?: string; expiresAt?: number; bitrate?: number; error?: string }> => invoke('stream:resolve', videoId),
+    resolve: (videoId: string, metadata?: { artist: string; title: string }): Promise<{ url?: string; expiresAt?: number; bitrate?: number; videoId?: string; error?: string }> =>
+      invoke('stream:resolve', videoId, metadata),
     prefetch: (videoId: string): Promise<{ ok: boolean }> => invoke('stream:prefetch', videoId),
     hasCached: (videoId: string): Promise<{ cached: boolean }> => invoke('stream:hasCached', videoId),
-    getCached: (videoId: string): Promise<{ url?: string; expiresAt?: number; bitrate?: number; error?: string }> => invoke('stream:getCached', videoId),
+    getCached: (videoId: string): Promise<{ url?: string; expiresAt?: number; bitrate?: number; videoId?: string; error?: string }> =>
+      invoke('stream:getCached', videoId),
   },
 
   import: {

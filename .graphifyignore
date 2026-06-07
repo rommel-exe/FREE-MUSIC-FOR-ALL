@@ -1,0 +1,12 @@
+# Build output - duplicates TypeScript source
+free-music-player/dist-electron/
+
+# Minified vendored YouTube player scripts - browser code, not part of app
+# These are 2 identical copies (8,829 lines each) that produce 80% of graph nodes
+free-music-player/*player-script.js
+
+# Node modules
+free-music-player/node_modules/
+
+# Graphify output
+graphify-out/

@@ -9,6 +9,7 @@ export interface Track {
   thumbnail: string;
   youtube_id: string;
   source: string;
+  play_count: number;
   created_at: string;
   updated_at: string;
 }

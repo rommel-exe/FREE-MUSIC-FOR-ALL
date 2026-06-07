@@ -31,6 +31,13 @@ export function AudioPlayer() {
   const loadedVideoIdRef = useRef<string | null>(null);
   const pendingPlayRef = useRef(false);
 
+  const errorCountRef = useRef(0);
+  const errorWindowRef = useRef<number>(0);
+  const playStartTimeRef = useRef<number>(0);
+  const skipCircuitBreakerRef = useRef(false);
+  const CIRCUIT_BREAKER_THRESHOLD = 3;
+  const CIRCUIT_BREAKER_WINDOW_MS = 10_000;
+
   // Create audio element once
   useEffect(() => {
     const audio = new Audio();
@@ -38,13 +45,39 @@ export function AudioPlayer() {
     audioRef.current = audio;
 
     audio.addEventListener('ended', () => {
-      usePlayerStore.getState().nextTrack();
+      // Guard: only auto-advance if the track actually played for > 2 seconds.
+      // Premature "ended" from a broken stream is ~0s, not the actual end of a song.
+      const playedMs = Date.now() - playStartTimeRef.current;
+      if (playedMs > 2000) {
+        usePlayerStore.getState().nextTrack();
+      } else {
+        console.warn('[AudioPlayer] Premature ended event (played', playedMs, 'ms) — ignoring to prevent skip chain');
+      }
     });
 
     audio.addEventListener('error', (e) => {
       const err = e as ErrorEvent;
       console.error('[AudioPlayer] Audio error:', err.message, err.type);
       usePlayerStore.getState().setLoading(false);
+
+      // Circuit breaker: if we've had too many consecutive errors,
+      // stop trying to auto-advance and let the user intervene.
+      const now = Date.now();
+      if (now - errorWindowRef.current > CIRCUIT_BREAKER_WINDOW_MS) {
+        errorCountRef.current = 0;
+      }
+      errorWindowRef.current = now;
+      errorCountRef.current++;
+
+      if (errorCountRef.current > CIRCUIT_BREAKER_THRESHOLD) {
+        if (!skipCircuitBreakerRef.current) {
+          skipCircuitBreakerRef.current = true;
+          console.error('[AudioPlayer] Circuit breaker tripped — too many consecutive errors, stopping auto-advance');
+          usePlayerStore.getState().setLoading(false);
+        }
+        return;
+      }
+
       // Advance to the next track so the user isn't stuck on a broken track.
       // The 500ms delay lets React commit the loading state first.
       setTimeout(() => {
@@ -73,6 +106,9 @@ export function AudioPlayer() {
     // (e.g. user changed tracks mid-load) could start playing the wrong song.
     audio.addEventListener('canplay', () => {
       usePlayerStore.getState().setLoading(false);
+      // Reset circuit breaker when a track is ready to play
+      errorCountRef.current = 0;
+      skipCircuitBreakerRef.current = false;
       if (
         pendingPlayRef.current &&
         loadedVideoIdRef.current === currentVideoIdRef.current &&
@@ -88,6 +124,14 @@ export function AudioPlayer() {
     audio.addEventListener('playing', () => {
       usePlayerStore.getState().setLoading(false);
       playbackController.setLoading(false);
+      // Track when playback actually starts for the ended-event guard
+      playStartTimeRef.current = Date.now();
+      // Reset circuit breaker on successful playback
+      // (reset after 5 seconds to confirm the track is really playing)
+      setTimeout(() => {
+        errorCountRef.current = 0;
+        skipCircuitBreakerRef.current = false;
+      }, 5000);
     });
 
     audio.addEventListener('waiting', () => {
@@ -159,8 +203,12 @@ export function AudioPlayer() {
       // 2) Fall back to the IPC resolve (which itself is cache-aware on
       //    the main process — so even without a renderer-side prefetch,
       //    a second resolve for the same videoId is instant).
+      //    Pass track metadata for auto-recovery when the video is unavailable.
       if (!source) {
-        source = await mediaResolver.resolve(videoId);
+        source = await mediaResolver.resolve(videoId, {
+          artist: currentTrack.artist,
+          title: currentTrack.title,
+        });
       }
 
       if (cancelled) return;
@@ -169,6 +217,23 @@ export function AudioPlayer() {
         console.error('[AudioPlayer] Failed to resolve media for:', videoId);
         usePlayerStore.getState().setLoading(false);
         pendingPlayRef.current = false;
+
+        // Circuit breaker: track consecutive resolve failures
+        const now = Date.now();
+        if (now - errorWindowRef.current > CIRCUIT_BREAKER_WINDOW_MS) {
+          errorCountRef.current = 0;
+        }
+        errorWindowRef.current = now;
+        errorCountRef.current++;
+
+        if (errorCountRef.current > CIRCUIT_BREAKER_THRESHOLD) {
+          if (!skipCircuitBreakerRef.current) {
+            skipCircuitBreakerRef.current = true;
+            console.error('[AudioPlayer] Circuit breaker tripped — too many resolve failures, stopping auto-advance');
+          }
+          return;
+        }
+
         // Auto-advance on resolve failure so the user isn't stuck.
         setTimeout(() => {
           if (usePlayerStore.getState().currentTrack?.youtubeId === videoId) {

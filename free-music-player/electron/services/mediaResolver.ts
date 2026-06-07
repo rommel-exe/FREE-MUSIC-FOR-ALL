@@ -1,17 +1,31 @@
 /**
- * MediaResolver — the ONLY module that touches yt-dlp or child_process.
+ * MediaResolver — audio stream resolver using an HTTP proxy.
  *
- * Exposes a local HTTP proxy so the renderer can fetch audio without CORS
- * or CORS-hating CDN restrictions.  The upstream URL is fetched via
- * Node's native http.request (streaming, no buffering).
+ * Spawns a lightweight Node.js HTTP server on a random available port
+ * to proxy audio streams from YouTube. The renderer plays audio via
+ * `http://127.0.0.1:<port>/stream/<videoId>`.
+ *
+ * This approach is more reliable than Electron's `protocol.handle`
+ * for audio streaming because Node.js `http` module handles streaming
+ * responses natively, without the serialization issues that occur when
+ * passing `ReadableStream` objects through Electron's protocol layer.
+ *
+ * Features:
+ *  - Resolve-time validation: checks availability, live_status, duration
+ *  - Auto-recovery: when resolve fails, searches YouTube Music for the
+ *    official audio track and plays that instead
+ *  - Verification cache: stores resolved state so repeat plays are instant
+ *  - Strict audio-only format selection with bitrate floor
  */
 
+import { createServer } from 'node:http';
+import { net } from 'electron';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import * as http from 'node:http';
-import * as https from 'node:https';
-import { URL } from 'node:url';
+import type { AddressInfo } from 'node:net';
 import type { MediaSource } from '../utils/types';
+import { getVerifiedTrack, setVerifiedTrack } from '../utils/database';
 
 const execFileAsync = promisify(execFile);
 
@@ -27,42 +41,103 @@ interface CacheEntry {
   streamUrl: string;
 }
 
+/** Optional track metadata for auto-recovery fallback. */
+export interface TrackMetadata {
+  artist: string;
+  title: string;
+}
+
 // ─── MediaResolver class ────────────────────────────────────────────────
 
 class MediaResolver {
   /** videoId → cached resolve result */
   private cache = new Map<string, CacheEntry>();
 
-  /** Local proxy server (created once in start()) */
-  private server: http.Server | null = null;
+  /** The Node.js HTTP server instance (started via `start()`). */
+  private server: ReturnType<typeof createServer> | null = null;
 
-  /** Port assigned to the proxy server after listen() */
+  /** The port the server is listening on (0 until started). */
   private port = 0;
 
   // ── Public API ──────────────────────────────────────────────────────
 
   /**
+   * Start the HTTP proxy server on a random available port.
+   * Idempotent — safe to call multiple times.
+   */
+  start(): Promise<void> {
+    if (this.server) return Promise.resolve();
+
+    return new Promise((resolve) => {
+      this.server = createServer((req, res) => {
+        this.handleProxyRequest(req, res);
+      });
+
+      this.server.listen(0, '127.0.0.1', () => {
+        this.port = (this.server!.address() as AddressInfo).port;
+        console.log(`[MediaResolver] HTTP proxy started on port ${this.port}`);
+        resolve();
+      });
+    });
+  }
+
+  /**
+   * Stop the HTTP proxy server. Safe to call even if not started.
+   */
+  stop(): void {
+    if (this.server) {
+      this.server.close();
+      this.server = null;
+      this.port = 0;
+      console.log('[MediaResolver] HTTP proxy stopped');
+    }
+  }
+
+  /**
+   * Get the port the proxy server is listening on.
+   * Returns 0 if the server hasn't been started.
+   */
+  getPort(): number {
+    return this.port;
+  }
+
+  /**
    * Resolve a YouTube video ID to a proxied audio source.
    *
-   * Returns a cached entry when still valid.  Otherwise invokes yt-dlp,
-   * stores the result and returns a fresh `MediaSource`.
+   * Uses a two-pass approach:
+   *  1. yt-dlp -j → validate playability (public, not live, 30-900s, has audio)
+   *  2. yt-dlp --get-url → get the actual stream URL
+   *
+   * If the primary video fails resolve and track metadata is available,
+   * automatically searches YouTube Music for the official audio track
+   * and returns that instead (the user never knows).
+   *
+   * @param videoId  - The YouTube video ID to resolve.
+   * @param metadata - Optional track metadata for auto-recovery fallback.
+   * @returns        - A MediaSource or null if all attempts failed.
    */
-  async resolve(videoId: string): Promise<MediaSource> {
+  async resolve(videoId: string, metadata?: TrackMetadata): Promise<MediaSource | null> {
+    // Check in-memory cache first
     const cached = this.getCached(videoId);
     if (cached) return cached;
 
-    const streamUrl = await this.fetchUpstreamUrl(videoId);
+    // 1) Try primary video
+    const primaryResult = await this.tryResolve(videoId);
+    if (primaryResult) return primaryResult;
 
-    const source: MediaSource = {
-      audioUrl: this.getProxyUrl(videoId),
-      expiresAt: Date.now() + CACHE_TTL_MS,
-      bitrate: 0, // yt-dlp --get-url doesn't report bitrate
-      videoId,
-    };
+    console.log(`[MediaResolver] Primary resolve failed for ${videoId}, attempting auto-recovery...`);
 
-    this.cache.set(videoId, { source, streamUrl });
+    // 2) Auto-recovery: search for official audio track
+    if (metadata?.artist && metadata?.title) {
+      const recoveryVideoId = await this.searchOfficialSong(metadata.artist, metadata.title);
+      if (recoveryVideoId && recoveryVideoId !== videoId) {
+        console.log(`[MediaResolver] Recovery: ${videoId} → ${recoveryVideoId}`);
+        const recoveryResult = await this.tryResolve(recoveryVideoId);
+        if (recoveryResult) return recoveryResult;
+      }
+    }
 
-    return source;
+    return null;
   }
 
   /**
@@ -90,8 +165,7 @@ class MediaResolver {
   }
 
   /**
-   * Return the cached `MediaSource` for `videoId`, or `null` if missing /
-   * expired.
+   * Return the cached `MediaSource` for `videoId`, or `null` if missing / expired.
    */
   getCached(videoId: string): MediaSource | null {
     const entry = this.cache.get(videoId);
@@ -110,58 +184,273 @@ class MediaResolver {
     this.cache.clear();
   }
 
+  // ── Proxy request handler ───────────────────────────────────────────
+
   /**
-   * Start the local HTTP proxy server on a random available port.
-   *
-   * @returns The port the server is listening on.
+   * Handle an incoming HTTP request to the proxy server.
+   * Expects URLs of the form `/stream/<videoId>`.
    */
-  start(): Promise<number> {
-    if (this.server) return Promise.resolve(this.port);
+  private handleProxyRequest(req: IncomingMessage, res: ServerResponse): void {
+    const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
+    const videoId = url.pathname.replace('/stream/', '');
 
-    return new Promise<number>((resolve) => {
-      this.server = http.createServer((req, res) => {
-        this.handleProxyRequest(req, res);
-      });
+    if (!videoId) {
+      res.writeHead(400);
+      res.end('Missing video ID');
+      return;
+    }
 
-      this.server.listen(0, '127.0.0.1', () => {
-        const addr = this.server?.address() ?? null;
-        this.port = typeof addr === 'object' && addr ? addr.port : 0;
-        console.log(`[MediaResolver] Proxy listening on port ${this.port}`);
-        resolve(this.port);
-      });
-    });
+    const entry = this.cache.get(videoId);
+    if (!entry) {
+      console.error(`[MediaResolver] Proxy request for uncached video: ${videoId}`);
+      res.writeHead(404);
+      res.end('Not cached — call resolve() first');
+      return;
+    }
+
+    this.proxyAudio(entry.streamUrl, req, res);
   }
 
   /**
-   * Stop the proxy server and clear all cached sources.
+   * Proxy audio from the upstream URL to the renderer's response,
+   * supporting Range requests for seeking.
+   *
+   * Uses Electron's `net.request` (Chromium network stack) for the upstream
+   * request because YouTube's CDN (googlevideo.com) often requires specific
+   * headers and TLS handling that Node's built-in `https` module doesn't
+   * provide correctly. `net.request` reuses Chrome's networking stack which
+   * already has the right certificates, ciphers, and YouTube-specific handling.
    */
-  stop(): void {
-    this.cache.clear();
-    if (this.server) {
-      this.server.close();
-      this.server = null;
+  private proxyAudio(upstreamUrl: string, req: IncomingMessage, res: ServerResponse): void {
+    // Build headers for the upstream request
+    const headers: Record<string, string> = {
+      'User-Agent':
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      'Referer': 'https://www.youtube.com/',
+      'Origin': 'https://www.youtube.com',
+    };
+
+    // Forward Range header from the audio element for seeking support
+    if (req.headers.range) {
+      headers['Range'] = req.headers.range as string;
     }
-    this.port = 0;
+
+    try {
+      const clientRequest = net.request({
+        method: 'GET',
+        url: upstreamUrl,
+        headers,
+      });
+
+      clientRequest.on('response', (proxyRes) => {
+        const statusCode = proxyRes.statusCode || 200;
+
+        const responseHeaders: Record<string, string | number | string[]> = {
+          'access-control-allow-origin': '*',
+          'accept-ranges': 'bytes',
+        };
+
+        const forwardedKeys = [
+          'content-type',
+          'content-length',
+          'content-range',
+          'accept-ranges',
+        ];
+        for (const key of forwardedKeys) {
+          const val = proxyRes.headers[key];
+          if (val !== undefined) {
+            responseHeaders[key] = val;
+          }
+        }
+
+        if (!responseHeaders['content-type']) {
+          responseHeaders['content-type'] = 'audio/mp4';
+        }
+
+        res.writeHead(statusCode, responseHeaders);
+        proxyRes.on('data', (chunk: Buffer) => {
+          res.write(chunk);
+        });
+        proxyRes.on('end', () => {
+          res.end();
+        });
+      });
+
+      clientRequest.on('error', (err) => {
+        console.error('[MediaResolver] Upstream request failed:', err.message);
+        if (!res.headersSent) {
+          res.writeHead(502);
+          res.end('Upstream request failed');
+        }
+      });
+
+      clientRequest.on('abort', () => {
+        if (!res.headersSent) {
+          res.writeHead(502);
+          res.end('Upstream request aborted');
+        }
+      });
+
+      req.on('close', () => {
+        clientRequest.abort();
+      });
+
+      clientRequest.end();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[MediaResolver] Failed to create upstream request:', msg);
+      if (!res.headersSent) {
+        res.writeHead(502);
+        res.end('Upstream request failed');
+      }
+    }
   }
 
   // ── Private helpers ─────────────────────────────────────────────────
 
   /**
-   * Build the local proxy URL for a given video ID.
+   * Attempt to resolve a single videoId with validation.
+   *
+   * 1. Checks the SQLite verification cache first (instant).
+   * 2. If not cached or expired, runs a fresh yt-dlp validation + URL fetch.
+   * 3. Validates: availability == public, !live, 30-900s duration, has audio formats.
+   * 4. On success, caches in both in-memory (for fast proxy) and SQLite (for repeat).
+   * 5. On failure, stores the failure in SQLite so we don't retry.
    */
-  private getProxyUrl(videoId: string): string {
-    return `http://127.0.0.1:${this.port}/stream?v=${videoId}`;
+  private async tryResolve(videoId: string): Promise<MediaSource | null> {
+    // Step 1: Check in-memory cache
+    const inMemory = this.getCached(videoId);
+    if (inMemory) return inMemory;
+
+    try {
+      // Step 2: Check SQLite verification cache for recent (≤1h) verified entry
+      const verified = getVerifiedTrack(videoId);
+      const isRecentlyVerified =
+        verified &&
+        verified.verified &&
+        verified.playable &&
+        Date.now() - new Date(verified.lastChecked).getTime() < 60 * 60 * 1000;
+
+      if (isRecentlyVerified && verified.trustScore >= 80) {
+        // Still needs the stream URL — fetch it
+        return this.fetchAndCache(videoId);
+      }
+
+      // Step 3: Full verification run — yt-dlp -j + validation
+      const { stdout } = await execFileAsync(
+        YTDLP_PATH,
+        ['-j', '--no-warnings', `https://www.youtube.com/watch?v=${videoId}`],
+        { timeout: 15_000 },
+      );
+
+      const data = JSON.parse(stdout);
+
+      // ── Validation ──────────────────────────────────────────────────
+      const availability = data.availability || 'public';
+      const liveStatus = data.live_status || 'not_live';
+      const duration = data.duration || 0;
+      const hasAudio = (data.formats || []).some(
+        (f: any) => f.audio_ext && f.audio_ext !== 'none' && f.audio_ext !== '',
+      );
+
+      if (availability !== 'public') {
+        // Store the failure in SQLite cache so we don't retry
+        this.storeVerificationFailure(videoId, 'availability', availability);
+        throw new Error(`Video ${videoId}: ${availability}`);
+      }
+
+      if (liveStatus !== 'not_live') {
+        this.storeVerificationFailure(videoId, 'live_status', liveStatus);
+        throw new Error(`Video ${videoId}: is ${liveStatus}`);
+      }
+
+      if (duration < 30 || duration > 900) {
+        this.storeVerificationFailure(videoId, 'duration', String(duration));
+        throw new Error(`Video ${videoId}: duration ${duration}s out of range`);
+      }
+
+      if (!hasAudio) {
+        this.storeVerificationFailure(videoId, 'has_audio', 'false');
+        throw new Error(`Video ${videoId}: no audio formats available`);
+      }
+
+      // Store successful verification
+      setVerifiedTrack({
+        videoId,
+        verified: true,
+        playable: true,
+        trustScore: 100,
+        channel: data.channel || data.uploader || '',
+        availability,
+        liveStatus,
+        duration,
+        hasAudio,
+        lastChecked: new Date().toISOString(),
+      });
+
+      // Step 4: Fetch the actual stream URL with audio-only format selection
+      return this.fetchAndCache(videoId);
+
+    } catch (err) {
+      console.error(`[MediaResolver] Failed to resolve ${videoId}:`, err instanceof Error ? err.message : err);
+      return null;
+    }
   }
 
   /**
-   * Run yt-dlp to obtain the raw streaming URL for `videoId`.
+   * Fetch the stream URL with strict audio-only format selection and cache it.
+   */
+  private async fetchAndCache(videoId: string): Promise<MediaSource | null> {
+    try {
+      const streamUrl = await this.fetchUpstreamUrl(videoId);
+
+      const source: MediaSource = {
+        audioUrl: `http://127.0.0.1:${this.port}/stream/${videoId}`,
+        expiresAt: Date.now() + CACHE_TTL_MS,
+        bitrate: 0,
+        videoId,
+      };
+
+      this.cache.set(videoId, { source, streamUrl });
+      return source;
+    } catch (err) {
+      console.error(`[MediaResolver] Failed to fetch stream URL for ${videoId}:`, err instanceof Error ? err.message : err);
+      return null;
+    }
+  }
+
+  /**
+   * Store a failed verification in the SQLite cache so we don't retry.
+   */
+  private storeVerificationFailure(videoId: string, reason: string, detail: string): void {
+    try {
+      setVerifiedTrack({
+        videoId,
+        verified: true,
+        playable: false,
+        trustScore: 0,
+        channel: '',
+        availability: reason === 'availability' ? detail : 'unknown',
+        liveStatus: reason === 'live_status' ? detail : 'unknown',
+        duration: 0,
+        hasAudio: false,
+        lastChecked: new Date().toISOString(),
+      });
+    } catch {
+      // Swallow — SQLite errors shouldn't break the resolve flow
+    }
+  }
+
+  /**
+   * Run yt-dlp --get-url to obtain the raw streaming URL for `videoId`.
+   * Uses strict audio-only format selection with bitrate floor.
    */
   private async fetchUpstreamUrl(videoId: string): Promise<string> {
     const { stdout } = await execFileAsync(
       YTDLP_PATH,
       [
         '-f',
-        'bestaudio[ext=m4a]/bestaudio',
+        'bestaudio[ext=m4a][abr>64]/bestaudio[abr>64]/bestaudio',
         '--get-url',
         '--no-warnings',
         `https://www.youtube.com/watch?v=${videoId}`,
@@ -175,96 +464,42 @@ class MediaResolver {
   }
 
   /**
-   * Handle an incoming request to the local proxy.
+   * Auto-recovery: search YouTube Music for the official audio track.
    *
-   * The proxy looks up the cached upstream URL for the requested video ID
-   * and pipes the response back to the client, supporting HTTP Range
-   * requests for seeking.
+   * Uses ytmusic-api (not yt-dlp) because it's much better at finding
+   * the canonical song entry. Searches for "Artist Title" and returns
+   * the first Topic channel result, or failing that, the first song result.
+   *
+   * @param artist - Artist name from the track metadata.
+   * @param title  - Song title from the track metadata.
+   * @returns      - A YouTube video ID, or null if no result found.
    */
-  private handleProxyRequest(
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
-  ): void {
-    const reqUrl = new URL(req.url || '/', 'http://localhost');
-    const videoId = reqUrl.searchParams.get('v');
+  private async searchOfficialSong(artist: string, title: string): Promise<string | null> {
+    try {
+      const mod = await import('ytmusic-api');
+      const YTMusic = mod.default;
+      const yt = new YTMusic();
+      await yt.initialize();
 
-    if (!videoId) {
-      res.writeHead(400);
-      res.end('Missing video ID');
-      return;
-    }
+      const query = `${artist} ${title}`.trim();
+      const results = await yt.searchSongs(query);
 
-    this.proxyAudio(videoId, req, res).catch((err) => {
-      if (!res.headersSent) {
-        res.writeHead(500);
+      if (!results || results.length === 0) return null;
+
+      // Prefer Topic channel results
+      for (const r of results) {
+        const channelName = r.artist?.name || '';
+        if (channelName.toLowerCase().includes(' - topic')) {
+          return r.videoId;
+        }
       }
-      res.end(`Proxy error: ${(err as Error).message ?? 'unknown'}`);
-    });
-  }
 
-  /**
-   * Pipe audio from the upstream URL to the local client.
-   *
-   * Uses Node's native `http.request` (streaming) — NOT `fetch`, which
-   * would buffer the entire response into memory.
-   */
-  private proxyAudio(
-    videoId: string,
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
-  ): Promise<void> {
-    const entry = this.cache.get(videoId);
-    if (!entry) {
-      return Promise.reject(new Error('Not cached — call resolve() first'));
+      // Fallback: return first result
+      return results[0].videoId || null;
+    } catch (err) {
+      console.error('[MediaResolver] Recovery search failed:', err instanceof Error ? err.message : err);
+      return null;
     }
-
-    const parsedUrl = new URL(entry.streamUrl);
-    const isHttps = parsedUrl.protocol === 'https:';
-    const httpModule = isHttps ? https : http;
-
-    const options: http.RequestOptions = {
-      hostname: parsedUrl.hostname,
-      port: parsedUrl.port || (isHttps ? 443 : 80),
-      path: parsedUrl.pathname + parsedUrl.search,
-      method: req.method || 'GET',
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-        ...(req.headers.range ? { Range: req.headers.range } : {}),
-      },
-    };
-
-    return new Promise<void>((resolve, reject) => {
-      const proxyReq = httpModule.request(options, (proxyRes) => {
-        const headers: http.OutgoingHttpHeaders = {
-          'Content-Type': (proxyRes.headers['content-type'] as string) || 'audio/mp4',
-          'Accept-Ranges': 'bytes',
-          'Access-Control-Allow-Origin': '*',
-        };
-        if (proxyRes.headers['content-length']) {
-          headers['Content-Length'] = proxyRes.headers['content-length'];
-        }
-        if (proxyRes.headers['content-range']) {
-          headers['Content-Range'] = proxyRes.headers['content-range'];
-        }
-
-        res.writeHead(proxyRes.statusCode || 200, headers);
-        proxyRes.pipe(res);
-
-        proxyRes.on('end', resolve);
-        proxyRes.on('error', reject);
-      });
-
-      proxyReq.on('error', (err) => {
-        if (!res.headersSent) {
-          res.writeHead(502);
-        }
-        res.end(`Upstream error: ${err.message}`);
-        reject(err);
-      });
-
-      req.pipe(proxyReq);
-    });
   }
 }
 

@@ -1,7 +1,9 @@
 import { useEffect, useRef, useMemo, memo } from 'react';
 import { useLyrics } from '@/hooks/useLyrics';
 import { usePlayerStore } from '@/store/playerStore';
+import { useUIStore } from '@/store/uiStore';
 import type { LyricLine as LyricLineData } from '@/hooks/useLyrics';
+import { X } from 'lucide-react';
 
 /** Memoized individual lyric line. Only re-renders when its own state changes. */
 const LyricLineView = memo(function LyricLineView({
@@ -39,6 +41,8 @@ export function LyricsPanel() {
   const artist = usePlayerStore((s) => s.currentTrack?.artist ?? '');
   const progress = usePlayerStore((s) => s.progress);
   const hasTrack = usePlayerStore((s) => s.currentTrack !== null);
+  const isLyricsOpen = useUIStore((s) => s.isLyricsOpen);
+  const toggleLyrics = useUIStore((s) => s.toggleLyrics);
 
   const { lyrics, loading, error } = useLyrics(title, artist);
 
@@ -71,18 +75,21 @@ export function LyricsPanel() {
     }
   }, [currentLineIndex]);
 
-  if (!hasTrack) return null;
+  if (!hasTrack || !isLyricsOpen) return null;
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="w-80 bg-[#0a0a0a] border-l border-white/5 flex flex-col h-full">
       {/* Header */}
-      <div className="p-4 border-b border-white/5">
+      <div className="flex items-center justify-between p-4 border-b border-white/5">
         <h2 className="text-lg font-bold text-white">Lyrics</h2>
-        {title && (
-          <div className="text-sm text-white/50 truncate">
-            {title} — {artist}
-          </div>
-        )}
+        <button
+          onClick={toggleLyrics}
+          className="p-1.5 hover:bg-white/10 rounded-md transition-colors text-white/50 hover:text-white"
+          type="button"
+          title="Close lyrics"
+        >
+          <X className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Lyrics content */}

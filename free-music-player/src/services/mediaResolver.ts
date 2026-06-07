@@ -7,6 +7,7 @@ interface StreamResolveResult {
   url?: string;
   expiresAt?: number;
   bitrate?: number;
+  videoId?: string;
   error?: string;
 }
 
@@ -16,15 +17,19 @@ function toMediaSource(videoId: string, result: StreamResolveResult | undefined)
     audioUrl: result.url,
     expiresAt: result.expiresAt ?? Date.now() + 6 * 60 * 60 * 1000,
     bitrate: result.bitrate ?? 128,
-    videoId,
+    videoId: result.videoId ?? videoId,
   };
 }
 
 export const mediaResolver = {
-  /** Resolve a video ID to a playable MediaSource. */
-  async resolve(videoId: string): Promise<MediaSource | null> {
+  /**
+   * Resolve a video ID to a playable MediaSource.
+   * Optionally pass track metadata so the main process can auto-recover
+   * by searching for the official audio if the primary ID fails.
+   */
+  async resolve(videoId: string, metadata?: { artist: string; title: string }): Promise<MediaSource | null> {
     try {
-      const result = await api?.stream?.resolve?.(videoId);
+      const result = await api?.stream?.resolve?.(videoId, metadata);
       return toMediaSource(videoId, result);
     } catch {
       return null;

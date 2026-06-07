@@ -24,6 +24,7 @@ interface PlayerState {
 
   playTrack: (track: Track) => void;
   playTracks: (tracks: Track[], startIndex?: number) => void;
+  playFromQueue: (index: number) => void;
   togglePlay: () => void;
   pause: () => void;
   resume: () => void;
@@ -105,8 +106,22 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   autoDedup: true,
 
   playTrack: (track) => {
+    // Set a single-track queue so next/previous are coherent
+    queueEngine.setQueue([track], 0);
     playbackController.play(track);
     recommendationEngine.recordPlay(track);
+    syncFromEngine(set);
+    debouncedSave(get());
+  },
+
+  playFromQueue: (index: number) => {
+    const track = queueEngine.jumpTo(index);
+    if (track) {
+      playbackController.play(track);
+      recommendationEngine.recordPlay(track);
+      const qs = queueEngine.getState();
+      prefetchEngine.prefetch(qs.queue, qs.queueIndex);
+    }
     syncFromEngine(set);
     debouncedSave(get());
   },
@@ -184,14 +199,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       prefetchEngine.prefetch(qs.queue, qs.queueIndex);
     } else {
       playbackController.pause();
+      // Clear current track from playback controller so the UI
+      // doesn't show a stale "loaded" track after the queue ends.
+      set({ currentTrack: null });
     }
     syncFromEngine(set);
     debouncedSave(get());
   },
 
   previousTrack: () => {
-    const { progress } = get();
-    const prev = queueEngine.previous(progress);
+    const realProgress = playbackController.getState().progress;
+    const prev = queueEngine.previous(realProgress);
     if (prev) {
       playbackController.play(prev);
     }

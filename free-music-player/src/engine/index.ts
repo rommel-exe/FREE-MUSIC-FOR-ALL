@@ -15,7 +15,6 @@
  */
 
 export { cacheEngine, LRUCache } from './cacheEngine';
-export { rankingEngine } from './rankingEngine';
 export { queryEngine, QueryEngine } from './queryEngine';
 export { queueEngine, QueueEngine } from './queueEngine';
 export { playbackController, PlaybackController } from './playbackController';
@@ -33,7 +32,7 @@ import type { Track } from '@/types';
  * Unified MusicEngine facade.
  *
  * Single entry point to all engine functionality:
- * - `search` — query YouTube with caching and ranking
+ * - `search` — query YouTube with caching (ranking happens on electron side)
  * - `queue`  — Spotify-like queue management
  * - `playback` — playback state machine
  * - `prefetch` — pre-resolve upcoming track MediaSources

@@ -77,6 +77,12 @@ export const ipc = {
   search: {
     searchYouTube: (query: string, limit?: number): Promise<SearchResult[]> =>
       (api?.search?.searchYouTube(query, limit) as Promise<SearchResult[]> | undefined) ?? Promise.resolve([]),
+    /** Trigger background verification for search results. */
+    verify: (results: Array<{ id: string; title: string; artist: string }>): Promise<{ ok: boolean }> =>
+      (api?.search?.verify?.(results) as Promise<{ ok: boolean }> | undefined) ?? Promise.resolve({ ok: false }),
+    /** Batch-lookup verification status for video IDs. */
+    getVerified: (videoIds: string[]): Promise<Record<string, { playable: boolean; trustScore: number }>> =>
+      (api?.search?.getVerified?.(videoIds) as Promise<Record<string, any>> | undefined) ?? Promise.resolve({}),
   },
 
   settings: {
@@ -91,9 +97,9 @@ export const ipc = {
   },
 
   stream: {
-    resolve: (videoId: string): Promise<{ url?: string; expiresAt?: number; bitrate?: number; error?: string }> =>
-      (api?.stream?.resolve?.(videoId) as
-        | Promise<{ url?: string; expiresAt?: number; bitrate?: number; error?: string }>
+    resolve: (videoId: string, metadata?: { artist: string; title: string }): Promise<{ url?: string; expiresAt?: number; bitrate?: number; videoId?: string; error?: string }> =>
+      (api?.stream?.resolve?.(videoId, metadata) as
+        | Promise<{ url?: string; expiresAt?: number; bitrate?: number; videoId?: string; error?: string }>
         | undefined) ?? Promise.resolve({ error: 'No API' }),
     prefetch: (videoId: string): Promise<{ ok: boolean }> =>
       (api?.stream?.prefetch?.(videoId) as Promise<{ ok: boolean }> | undefined) ??

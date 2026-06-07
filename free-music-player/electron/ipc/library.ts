@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import * as db from '../utils/database';
 import type { Track } from '../utils/types';
+import { validate, IdSchema, TrackSchema } from '../utils/validate';
 
 function generateId(): string {
   try { return crypto.randomUUID(); } catch { return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`; }
@@ -13,24 +14,43 @@ export function registerLibraryHandlers(): void {
 
   ipcMain.handle('library:addTrack', (_event, track: any) => {
     try {
-      const id = track.id || generateId();
-      return db.addTrack({ id, title: track.title || '', artist: track.artist || '', album: track.album || '', duration: track.duration || 0, path: track.path || '', thumbnail: track.thumbnail || '', youtube_id: track.youtubeId || track.youtube_id || '', source: track.source || 'local' });
+      const data = validate(TrackSchema, track ?? {}, 'track');
+      const id = data.id || generateId();
+      return db.addTrack({
+        id,
+        title: data.title,
+        artist: data.artist,
+        album: data.album,
+        duration: data.duration,
+        path: data.path || '',
+        thumbnail: data.thumbnail,
+        youtube_id: data.youtubeId || data.youtube_id || '',
+        source: data.source || 'local',
+        play_count: data.playCount ?? data.play_count ?? 0,
+      });
     } catch (err: any) { throw new Error(err.message); }
   });
 
-  ipcMain.handle('library:removeTrack', (_event, id: string) => {
-    try { return db.removeTrack(id); } catch (err: any) { throw new Error(err.message); }
-  });
-
-  ipcMain.handle('library:searchTracks', (_event, query: string) => {
-    try { return db.searchTracks(query); } catch (err: any) { throw new Error(err.message); }
-  });
-
-  ipcMain.handle('library:toggleFavorite', (_event, id: string) => {
+  ipcMain.handle('library:removeTrack', (_event, id: unknown) => {
     try {
-      const exists = db.isFavorite(id);
-      if (exists) { db.removeFavorite(id); return false; }
-      db.addFavorite(id); return true;
+      const validatedId = validate(IdSchema, id, 'track ID');
+      return db.removeTrack(validatedId);
+    } catch (err: any) { throw new Error(err.message); }
+  });
+
+  ipcMain.handle('library:searchTracks', (_event, query: unknown) => {
+    try {
+      const validatedQuery = String(query ?? '');
+      return db.searchTracks(validatedQuery);
+    } catch (err: any) { throw new Error(err.message); }
+  });
+
+  ipcMain.handle('library:toggleFavorite', (_event, id: unknown) => {
+    try {
+      const validatedId = validate(IdSchema, id, 'track ID');
+      const exists = db.isFavorite(validatedId);
+      if (exists) { db.removeFavorite(validatedId); return false; }
+      db.addFavorite(validatedId); return true;
     } catch (err: any) { throw new Error(err.message); }
   });
 
@@ -48,7 +68,10 @@ export function registerLibraryHandlers(): void {
     } catch (err: any) { throw new Error(err.message); }
   });
 
-  ipcMain.handle('library:incrementPlayCount', (_event, id: string) => {
-    try { db.updateTrack(id, {}); } catch {}
+  ipcMain.handle('library:incrementPlayCount', (_event, id: unknown) => {
+    try {
+      const validatedId = validate(IdSchema, id, 'track ID');
+      db.incrementPlayCount(validatedId);
+    } catch (err) { console.error('[library] incrementPlayCount failed:', err); }
   });
 }

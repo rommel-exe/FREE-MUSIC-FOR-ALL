@@ -23,7 +23,7 @@ function isValidPlaylistUrl(url: string): boolean {
 }
 
 export function ImportModal() {
-  const { modalOpen, closeModal, addToast, setPage } = useUIStore();
+  const { modalOpen, closeModal, addToast, setPage, setSelectedPlaylistId } = useUIStore();
   const importAsPlaylist = useLibraryStore((s) => s.importAsPlaylist);
   const isOpen = modalOpen === 'import';
 
@@ -114,9 +114,8 @@ export function ImportModal() {
       // The simplest is to set the page; the PlaylistPage can read selection from store.
       // For now, just close the modal and set the page to 'library'.
       // (Playlist page selection is handled by a separate playlist store in a fuller app.)
-      setPage('library');
-      // Also surface the playlist id in a way the PlaylistPage can pick up
-      (window as any).__selectedPlaylistId = result.playlist.id;
+      setPage('playlist');
+      setSelectedPlaylistId(result.playlist.id);
     }
     handleClose();
   };

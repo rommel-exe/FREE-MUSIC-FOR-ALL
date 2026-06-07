@@ -23,7 +23,7 @@ function mapTrack(row: any): any {
     youtubeId: row.youtube_id ?? row.youtubeId ?? '',
     source: row.source,
     isFavorite: row.isFavorite ?? false,
-    playCount: row.playCount ?? 0,
+    playCount: row.play_count ?? row.playCount ?? 0,
     createdAt: row.created_at ?? row.createdAt ?? '',
     updatedAt: row.updated_at ?? row.updatedAt ?? '',
   };
@@ -54,6 +54,7 @@ export function initDatabase(): Database.Database {
       thumbnail   TEXT NOT NULL DEFAULT '',
       youtube_id  TEXT NOT NULL DEFAULT '',
       source      TEXT NOT NULL DEFAULT 'local',
+      play_count  INTEGER NOT NULL DEFAULT 0,
       created_at  TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -113,7 +114,28 @@ export function initDatabase(): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_queue_position      ON queue(position);
     CREATE INDEX IF NOT EXISTS idx_playlist_tracks_pos ON playlist_tracks(playlist_id, position);
     CREATE INDEX IF NOT EXISTS idx_recently_played     ON recently_played(played_at);
+
+    CREATE TABLE IF NOT EXISTS verified_tracks (
+      video_id      TEXT PRIMARY KEY,
+      verified      INTEGER NOT NULL DEFAULT 0,
+      playable      INTEGER NOT NULL DEFAULT 0,
+      trust_score   INTEGER NOT NULL DEFAULT 0,
+      channel       TEXT NOT NULL DEFAULT '',
+      availability  TEXT NOT NULL DEFAULT 'unknown',
+      live_status   TEXT NOT NULL DEFAULT 'unknown',
+      duration      INTEGER NOT NULL DEFAULT 0,
+      has_audio     INTEGER NOT NULL DEFAULT 0,
+      last_checked  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_verified_playable ON verified_tracks(playable);
   `);
+
+  // ── Migration: add play_count column if missing (added after v1.0) ────
+  const cols = db.prepare("PRAGMA table_info('tracks')").all() as { name: string }[];
+  if (!cols.some((c) => c.name === 'play_count')) {
+    db.exec("ALTER TABLE tracks ADD COLUMN play_count INTEGER NOT NULL DEFAULT 0");
+  }
 
   const defaults: Record<string, string> = { volume: '0.8', theme: 'dark' };
   const upsert = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
@@ -140,9 +162,9 @@ export function getTrackById(id: string): Track | undefined {
 export function addTrack(track: Omit<Track, 'created_at' | 'updated_at'>): Track {
   const now = new Date().toISOString();
   getDb().prepare(
-    `INSERT INTO tracks (id, title, artist, album, duration, path, thumbnail, youtube_id, source, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(track.id, track.title, track.artist, track.album, track.duration, track.path, track.thumbnail, track.youtube_id, track.source, now, now);
+    `INSERT INTO tracks (id, title, artist, album, duration, path, thumbnail, youtube_id, source, play_count, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(track.id, track.title, track.artist, track.album, track.duration, track.path, track.thumbnail, track.youtube_id, track.source, track.play_count ?? 0, now, now);
   return getTrackById(track.id)!;
 }
 
@@ -304,6 +326,12 @@ export function getRecentlyPlayed(limit = 50): RecentlyPlayed[] {
   return getDb().prepare('SELECT * FROM recently_played ORDER BY played_at DESC LIMIT ?').all(limit) as RecentlyPlayed[];
 }
 
+// ─── Play Count ────────────────────────────────────────────────────────
+
+export function incrementPlayCount(id: string): void {
+  getDb().prepare("UPDATE tracks SET play_count = play_count + 1, updated_at = datetime('now') WHERE id = ?").run(id);
+}
+
 // ─── Favorites ──────────────────────────────────────────────────────────
 
 export function addFavorite(trackId: string): void {
@@ -337,4 +365,80 @@ export function getSession(): Record<string, unknown> | null {
 export function saveSession(data: Record<string, unknown>): void {
   const json = JSON.stringify(data);
   getDb().prepare('INSERT OR REPLACE INTO session (id, data) VALUES (1, ?)').run(json);
+}
+
+// ─── Verified Tracks (verification cache) ────────────────────────────────
+
+export interface VerifiedTrack {
+  videoId: string;
+  verified: boolean;
+  playable: boolean;
+  trustScore: number;
+  channel: string;
+  availability: string;
+  liveStatus: string;
+  duration: number;
+  hasAudio: boolean;
+  lastChecked: string;
+}
+
+export function getVerifiedTrack(videoId: string): VerifiedTrack | null {
+  const row = getDb().prepare('SELECT * FROM verified_tracks WHERE video_id = ?').get(videoId) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return {
+    videoId: row.video_id as string,
+    verified: (row.verified as number) === 1,
+    playable: (row.playable as number) === 1,
+    trustScore: row.trust_score as number,
+    channel: row.channel as string,
+    availability: row.availability as string,
+    liveStatus: row.live_status as string,
+    duration: row.duration as number,
+    hasAudio: (row.has_audio as number) === 1,
+    lastChecked: row.last_checked as string,
+  };
+}
+
+export function getVerifiedTracksBatch(videoIds: string[]): Map<string, VerifiedTrack> {
+  if (videoIds.length === 0) return new Map();
+  const placeholders = videoIds.map(() => '?').join(',');
+  const rows = getDb().prepare(`SELECT * FROM verified_tracks WHERE video_id IN (${placeholders})`).all(...videoIds) as Record<string, unknown>[];
+  const map = new Map<string, VerifiedTrack>();
+  for (const row of rows) {
+    map.set(row.video_id as string, {
+      videoId: row.video_id as string,
+      verified: (row.verified as number) === 1,
+      playable: (row.playable as number) === 1,
+      trustScore: row.trust_score as number,
+      channel: row.channel as string,
+      availability: row.availability as string,
+      liveStatus: row.live_status as string,
+      duration: row.duration as number,
+      hasAudio: (row.has_audio as number) === 1,
+      lastChecked: row.last_checked as string,
+    });
+  }
+  return map;
+}
+
+export function setVerifiedTrack(data: VerifiedTrack): void {
+  getDb().prepare(`
+    INSERT OR REPLACE INTO verified_tracks (video_id, verified, playable, trust_score, channel, availability, live_status, duration, has_audio, last_checked)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    data.videoId,
+    data.verified ? 1 : 0,
+    data.playable ? 1 : 0,
+    data.trustScore,
+    data.channel,
+    data.availability,
+    data.liveStatus,
+    data.duration,
+    data.hasAudio ? 1 : 0,
+    data.lastChecked,
+  );
+}
+
+export function clearExpiredVerifiedTracks(maxAgeDays = 7): void {
+  getDb().prepare(`DELETE FROM verified_tracks WHERE last_checked < datetime('now', '-' || ? || ' days')`).run(maxAgeDays);
 }

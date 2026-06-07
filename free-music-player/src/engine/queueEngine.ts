@@ -266,6 +266,27 @@ export class QueueEngine {
   }
 
   // -----------------------------------------------------------------------
+  // Jump to index
+  // -----------------------------------------------------------------------
+
+  /**
+   * Jump to a specific index in the queue and return the track at that position.
+   *
+   * Records the current track in play history and adjusts the queue index so
+   * that the caller can start playback at an arbitrary position (e.g. when the
+   * user clicks a specific track in the "Up Next" list).
+   *
+   * @param index - Absolute queue index to jump to.
+   * @returns     - The `Track` at that position, or `null` if the queue is
+   *                empty or the index is out of bounds.
+   */
+  jumpTo(index: number): Track | null {
+    if (this.queue.length === 0) return null;
+    this.queueIndex = this.clampIndex(index);
+    return this.recordAndReturn(this.getCurrentTrack());
+  }
+
+  // -----------------------------------------------------------------------
   // Shuffle & Repeat
   // -----------------------------------------------------------------------
 

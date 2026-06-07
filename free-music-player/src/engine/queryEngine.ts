@@ -1,13 +1,22 @@
 /**
- * QueryEngine — Search query engine with caching, ranking, and debounce.
+ * QueryEngine — Search query engine with caching and debounce.
  *
  * Normalises queries, checks an in-memory TTL cache, calls the IPC YouTube
- * search bridge, ranks results by title match / duration / channel / popularity,
- * and returns scored `Track[]` results.
+ * search bridge, and returns `Track[]` results.
+ *
+ * Ranking is delegated to the electron-side `rankSearchResults()` which has
+ * full access to title + artist fields and content-type signals. The
+ * results from IPC arrive pre-ranked — QueryEngine does NOT re-rank them.
  */
 
 import type { Track, SearchResult } from '@/types';
 import { ipc } from '@/utils/ipc';
+
+/**
+ * Minimum trust score threshold for search results.
+ * Results below this score are discarded entirely.
+ */
+const TRUST_SCORE_THRESHOLD = 80;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -16,89 +25,6 @@ import { ipc } from '@/utils/ipc';
 interface CacheEntry {
   tracks: Track[];
   expiresAt: number;
-}
-
-// ---------------------------------------------------------------------------
-// Ranking helpers (pure functions, no external deps)
-// ---------------------------------------------------------------------------
-
-/**
- * Score how well a result title matches the user query.
- *
- * | Condition                       | Points |
- * |---------------------------------|--------|
- * | Exact match (case-insensitive)  |   40   |
- * | Title contains query            |   30   |
- * | Query contains title            |   20   |
- * | Any word overlap                |   10   |
- * | No overlap                      |    0   |
- */
-function titleMatchScore(title: string, query: string): number {
-  const t = title.toLowerCase();
-  const q = query.toLowerCase();
-
-  if (t === q) return 40;
-  if (t.includes(q)) return 30;
-  if (q.includes(t)) return 20;
-
-  // partial word overlap
-  const queryWords = q.split(/\s+/).filter(Boolean);
-  const titleWords = t.split(/\s+/).filter(Boolean);
-  const overlap = queryWords.filter((w) => titleWords.includes(w)).length;
-  if (overlap > 0) return Math.min(10 + overlap * 2, 18);
-
-  return 0;
-}
-
-/**
- * Score a result based on its duration (seconds).
- *
- * 2–8 min → 25 pts, 1–2 / 8–10 min → 15 pts,
- * 30 s–1 min / 10–15 min → 8 pts, <30 s or >15 min → 0 pts.
- */
-function durationScore(durationSec: number): number {
-  if (durationSec < 30) return 0;
-  if (durationSec < 60) return 8;
-  if (durationSec < 120) return 15;
-  if (durationSec <= 480) return 25; // 2–8 min
-  if (durationSec <= 600) return 15;
-  if (durationSec <= 900) return 8;
-  return 0; // >15 min
-}
-
-/**
- * Bonus for "topic" channels (auto-generated / official music channels).
- *
- * Channel detected via thumbnail URL pattern or title heuristic.
- */
-function channelScore(result: { title: string; artist: string }): number {
-  const title = result.title.toLowerCase();
-  if (title.includes(' - topic') || title.includes('vevo')) return 20;
-  // Artist name often appears as channel — treat as quality signal
-  if (result.artist && result.artist.length > 0) return 10;
-  return 0;
-}
-
-/**
- * Popularity proxy — use playCount when available.
- */
-function popularityScore(result: { playCount?: number }): number {
-  if (!result.playCount) return 0;
-  const v = result.playCount;
-  if (v > 1_000_000) return 15;
-  if (v > 100_000) return 12;
-  if (v > 10_000) return 8;
-  if (v > 1_000) return 4;
-  return 0;
-}
-
-/** Total ranking score for a search result. */
-function rankScore(result: { title: string; artist: string; duration: number; playCount?: number }, query: string): number {
-  const titleScore_ = titleMatchScore(result.title, query);
-  const durScore = durationScore(result.duration);
-  const chanScore = channelScore(result);
-  const popScore = popularityScore(result);
-  return titleScore_ + durScore + chanScore + popScore;
 }
 
 // ---------------------------------------------------------------------------
@@ -136,13 +62,13 @@ export class QueryEngine {
   /**
    * Search YouTube for tracks matching `query`.
    *
-   * Results are cached for 55 minutes and ranked by title match, duration,
-   * channel quality, and popularity. Previous in-flight searches are aborted
-   * when a new search starts.
+   * Results are cached for 55 minutes. Ranking is handled by the electron
+   * side (`rankSearchResults` which is artist-aware and applies content-type
+   * signals). Previous in-flight searches are aborted when a new search starts.
    *
    * @param query  - Free-text search string.
    * @param limit  - Maximum number of results (default 10).
-   * @returns      - Ranked array of `Track` objects.
+   * @returns      - Array of `Track` objects in rank order.
    */
   async search(query: string, limit: number = 10): Promise<Track[]> {
     const normalised = this.normalise(query);
@@ -204,9 +130,10 @@ export class QueryEngine {
   }
 
   /**
-   * Execute the actual YouTube search, rank results, and cache them.
+   * Execute the actual YouTube search and cache results.
    *
    * Uses a debounce wrapper so rapid successive calls only fire once.
+   * Ranking is delegated to the electron-side `rankSearchResults`.
    */
   private async executeSearch(query: string, limit: number): Promise<Track[]> {
     // Debounce: if a timer is already pending, wait for it
@@ -226,25 +153,20 @@ export class QueryEngine {
       // If we were aborted, return empty — the newer call will take over
       if (controller.signal.aborted) return [];
 
+      // Results from the IPC search have already passed the trust score engine
+      // (search.ts computeTrustScore + score >= 80 filter). Take the top `limit`
+      // results and display them immediately.
       const ranked = results
         .map((r) => this.searchResultToTrack(r))
-        .sort((a, b) => {
-          // Sort by score descending — recompute inline to avoid storing
-          const scoreA =
-            titleMatchScore(a.title, query) +
-            durationScore(a.duration) +
-            channelScore(a) +
-            popularityScore(a);
-          const scoreB =
-            titleMatchScore(b.title, query) +
-            durationScore(b.duration) +
-            channelScore(b) +
-            popularityScore(b);
-          return scoreB - scoreA;
-        })
         .slice(0, limit);
 
       this.setCache(query, ranked);
+
+      // Fire-and-forget: trigger background verification (yt-dlp --dump-json)
+      // so the verification cache is populated before the user clicks play.
+      // This is completely invisible to the user.
+      this.verifyInBackground(results.slice(0, limit)).catch(() => {});
+
       return ranked;
     } catch (err) {
       // AbortError is expected when a newer search supersedes this one
@@ -275,6 +197,19 @@ export class QueryEngine {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+  }
+
+  /**
+   * Trigger background verification for search results.
+   * Runs asynchronously so the UI is never blocked.
+   * Results are cached in the SQLite verification table on the main process.
+   */
+  private async verifyInBackground(results: SearchResult[]): Promise<void> {
+    try {
+      await ipc.search.verify(results.map(r => ({ id: r.id, title: r.title, artist: r.artist })));
+    } catch {
+      // Background verification is best-effort — never block the UI
+    }
   }
 }
 

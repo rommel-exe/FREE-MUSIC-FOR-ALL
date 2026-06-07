@@ -15,7 +15,9 @@ interface UIState {
   toasts: Toast[];
   searchQuery: string;
   isQueueOpen: boolean;
+  isLyricsOpen: boolean;
   isFullPlayerOpen: boolean;
+  selectedPlaylistId: string | null;
 
   setPage: (page: string) => void;
   toggleTheme: () => void;
@@ -26,7 +28,9 @@ interface UIState {
   removeToast: (id: string) => void;
   setSearchQuery: (query: string) => void;
   toggleQueue: () => void;
+  toggleLyrics: () => void;
   setFullPlayerOpen: (open: boolean) => void;
+  setSelectedPlaylistId: (id: string | null) => void;
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
@@ -38,7 +42,9 @@ export const useUIStore = create<UIState>((set, get) => ({
   toasts: [],
   searchQuery: '',
   isQueueOpen: false,
+  isLyricsOpen: false,
   isFullPlayerOpen: false,
+  selectedPlaylistId: null,
 
   setPage: (page) => set({ currentPage: page }),
   toggleTheme: () => set((s) => ({ theme: s.theme === 'dark' ? 'light' : 'dark' })),
@@ -53,5 +59,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   removeToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
   setSearchQuery: (query) => set({ searchQuery: query }),
   toggleQueue: () => set((s) => ({ isQueueOpen: !s.isQueueOpen })),
+  toggleLyrics: () => set((s) => ({ isLyricsOpen: !s.isLyricsOpen })),
   setFullPlayerOpen: (open) => set({ isFullPlayerOpen: open }),
+  setSelectedPlaylistId: (id) => set({ selectedPlaylistId: id }),
 }));

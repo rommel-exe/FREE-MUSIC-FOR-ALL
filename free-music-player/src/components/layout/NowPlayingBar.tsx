@@ -1,6 +1,11 @@
-import { memo, useCallback, useRef, useEffect, useState } from 'react';
+import { memo, useCallback, useState } from 'react';
 import { usePlayerStore } from '@/store/playerStore';
 import { useUIStore } from '@/store/uiStore';
+import { useLibraryStore } from '@/store/libraryStore';
+import {
+  Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1,
+  Volume2, VolumeX, Volume1, Heart, ListMusic, Music, ChevronUp, Mic2,
+} from 'lucide-react';
 
 function formatTime(seconds: number): string {
   if (!seconds || !Number.isFinite(seconds)) return '0:00';
@@ -9,7 +14,10 @@ function formatTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-// Separate progress bar to avoid full re-render on every progress tick
+/* ------------------------------------------------------------------ */
+/*  Progress bar                                                        */
+/* ------------------------------------------------------------------ */
+
 const ProgressBar = memo(function ProgressBar({
   progress,
   duration,
@@ -20,29 +28,48 @@ const ProgressBar = memo(function ProgressBar({
   onSeek: (time: number) => void;
 }) {
   const percent = duration > 0 ? (progress / duration) * 100 : 0;
-  const handleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    onSeek((x / rect.width) * duration);
-  }, [duration, onSeek]);
+
+  const handleClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      onSeek((x / rect.width) * duration);
+    },
+    [duration, onSeek],
+  );
 
   return (
-    <div className="w-full flex items-center gap-2">
-      <span className="text-[10px] text-white/40 w-10 text-right tabular-nums">{formatTime(progress)}</span>
-      <div className="flex-1 h-1 bg-white/10 rounded-full cursor-pointer group relative" onClick={handleClick}>
+    <div className="w-full flex items-center gap-2.5 group/prog">
+      <span className="text-[11px] text-white/40 w-10 text-right tabular-nums font-medium">
+        {formatTime(progress)}
+      </span>
+      <div
+        className="flex-1 h-1.5 bg-white/10 rounded-full cursor-pointer relative group/bar"
+        onClick={handleClick}
+        role="slider"
+        aria-label="Seek"
+        aria-valuenow={Math.round(progress)}
+        aria-valuemax={Math.round(duration)}
+        tabIndex={0}
+      >
         <div
-          className="h-full bg-white rounded-full group-hover:bg-green-400 transition-colors relative"
+          className="h-full bg-white group-hover/bar:bg-green-400 rounded-full transition-colors relative"
           style={{ width: `${percent}%` }}
         >
-          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md" />
+          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-white rounded-full opacity-0 group-hover/bar:opacity-100 transition-opacity shadow-lg shadow-black/50 scale-75 group-hover/bar:scale-100" />
         </div>
       </div>
-      <span className="text-[10px] text-white/40 w-10 tabular-nums">{formatTime(duration)}</span>
+      <span className="text-[11px] text-white/40 w-10 tabular-nums font-medium">
+        {formatTime(duration)}
+      </span>
     </div>
   );
 });
 
-// Separate volume control to avoid full re-render
+/* ------------------------------------------------------------------ */
+/*  Volume control                                                      */
+/* ------------------------------------------------------------------ */
+
 const VolumeControl = memo(function VolumeControl({
   volume,
   isMuted,
@@ -54,39 +81,53 @@ const VolumeControl = memo(function VolumeControl({
   onVolumeChange: (v: number) => void;
   onToggleMute: () => void;
 }) {
-  const handleVolumeClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    onVolumeChange(Math.max(0, Math.min(1, x / rect.width)));
-  }, [onVolumeChange]);
+  const handleVolumeClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      onVolumeChange(Math.max(0, Math.min(1, x / rect.width)));
+    },
+    [onVolumeChange],
+  );
+
+  const effectiveVolume = isMuted ? 0 : volume;
+
+  const VolumeIcon = effectiveVolume === 0 ? VolumeX : effectiveVolume < 0.4 ? Volume1 : Volume2;
 
   return (
-    <div className="flex items-center gap-2 w-[180px] justify-end">
-      <button onClick={onToggleMute} className="p-1 text-white/50 hover:text-white transition-colors" type="button">
-        {isMuted || volume === 0 ? (
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-          </svg>
-        ) : volume < 0.5 ? (
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-          </svg>
-        ) : (
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-          </svg>
-        )}
+    <div className="flex items-center gap-2">
+      <button
+        onClick={onToggleMute}
+        className="p-1.5 text-white/50 hover:text-white transition-colors rounded-md hover:bg-white/5"
+        type="button"
+        title={isMuted ? 'Unmute' : 'Mute'}
+      >
+        <VolumeIcon className="w-4 h-4" />
       </button>
-      <div className="w-20 h-1 bg-white/10 rounded-full cursor-pointer group" onClick={handleVolumeClick}>
+      <div
+        className="w-[90px] h-1.5 bg-white/10 rounded-full cursor-pointer group/vol"
+        onClick={handleVolumeClick}
+        role="slider"
+        aria-label="Volume"
+        aria-valuenow={Math.round(effectiveVolume * 100)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        tabIndex={0}
+      >
         <div
-          className="h-full bg-white rounded-full group-hover:bg-green-400 transition-colors"
-          style={{ width: `${(isMuted ? 0 : volume) * 100}%` }}
-        />
+          className="h-full bg-white group-hover/vol:bg-green-400 rounded-full transition-colors relative"
+          style={{ width: `${effectiveVolume * 100}%` }}
+        >
+          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover/vol:opacity-100 transition-opacity shadow-md" />
+        </div>
       </div>
     </div>
   );
 });
+
+/* ------------------------------------------------------------------ */
+/*  Now Playing Bar                                                     */
+/* ------------------------------------------------------------------ */
 
 export const NowPlayingBar = memo(function NowPlayingBar() {
   const currentTrack = usePlayerStore((s) => s.currentTrack);
@@ -109,78 +150,163 @@ export const NowPlayingBar = memo(function NowPlayingBar() {
   const setFullPlayerOpen = usePlayerStore((s) => s.setFullPlayerOpen);
   const toggleQueue = useUIStore((s) => s.toggleQueue);
   const isQueueOpen = useUIStore((s) => s.isQueueOpen);
+  const toggleLyrics = useUIStore((s) => s.toggleLyrics);
+  const isLyricsOpen = useUIStore((s) => s.isLyricsOpen);
+
+  const toggleFavorite = useLibraryStore((s) => s.toggleFavorite);
+  const tracks = useLibraryStore((s) => s.tracks);
+  const [hoveringTrack, setHoveringTrack] = useState(false);
+
+  // Look up the current track's favorite state from the library (not the
+  // stale player-store copy) so toggling the heart icon reflects instantly.
+  const libraryTrack = currentTrack ? tracks.find((t) => t.id === currentTrack.id) : undefined;
+  const isFavorited = libraryTrack?.isFavorite ?? currentTrack?.isFavorite ?? false;
 
   if (!currentTrack) {
     return (
-      <div className="h-[72px] bg-[#111] border-t border-white/5 flex items-center justify-center">
+      <div className="h-[80px] bg-[#0c0c0c] border-t border-white/5 flex items-center justify-center">
         <span className="text-white/20 text-sm">Select a song to play</span>
       </div>
     );
   }
 
   return (
-    <div className="h-[72px] bg-[#111] border-t border-white/5 flex items-center px-4 gap-4">
-      {/* Track info */}
-      <div className="flex items-center gap-3 w-[240px] min-w-0">
+    <div className="h-[80px] bg-[#0c0c0c] border-t border-white/[0.06] flex items-center px-4 gap-4">
+      {/* ── Left: Track info ── */}
+      <div
+        className="flex items-center gap-3 w-[30%] min-w-0"
+        onMouseEnter={() => setHoveringTrack(true)}
+        onMouseLeave={() => setHoveringTrack(false)}
+      >
         <button
           onClick={() => setFullPlayerOpen(true)}
-          className="w-12 h-12 rounded-md bg-white/10 flex-shrink-0 overflow-hidden hover:scale-105 transition-transform"
+          className="w-14 h-14 rounded-lg bg-white/10 flex-shrink-0 overflow-hidden hover:scale-105 transition-transform shadow-lg shadow-black/30"
+          type="button"
         >
           {currentTrack.thumbnail ? (
             <img src={currentTrack.thumbnail} alt={currentTrack.title} className="w-full h-full object-cover" loading="lazy" />
           ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <svg className="w-5 h-5 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" />
-              </svg>
+            <div className="w-full h-full flex items-center justify-center bg-white/5">
+              <Music className="w-6 h-6 text-white/25" />
             </div>
           )}
         </button>
-        <div className="min-w-0">
-          <div className="text-sm font-medium text-white truncate">{currentTrack.title}</div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-white truncate">{currentTrack.title}</div>
           <div className="text-xs text-white/50 truncate">{currentTrack.artist}</div>
         </div>
+        <button
+          onClick={() => toggleFavorite(currentTrack.id)}
+          className={`p-1.5 rounded-md transition-all duration-150 ${
+            hoveringTrack ? 'opacity-100' : 'opacity-0'
+          } ${isFavorited ? '!opacity-100' : ''}`}
+          type="button"
+          title={isFavorited ? 'Unlike' : 'Like'}
+        >
+          <Heart
+            className={`w-4 h-4 transition-colors ${
+              isFavorited
+                ? 'text-green-400 fill-green-400'
+                : 'text-white/50 hover:text-white'
+            }`}
+          />
+        </button>
       </div>
 
-      {/* Center controls */}
-      <div className="flex-1 flex flex-col items-center gap-1 max-w-[600px] mx-auto">
-        <div className="flex items-center gap-4">
-          <button onClick={toggleShuffle} className={`p-1.5 rounded-full transition-colors ${isShuffle ? 'text-green-400' : 'text-white/50 hover:text-white'}`} title="Shuffle" type="button">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4h4l3 8-3 8H4m16-16h-4l-3 8 3 8h4M4 12h16" />
-            </svg>
+      {/* ── Center: Controls + Progress ── */}
+      <div className="flex-1 flex flex-col items-center gap-1.5 max-w-[700px] mx-auto">
+        {/* Transport controls */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={toggleShuffle}
+            className={`p-1.5 rounded-full transition-colors ${
+              isShuffle ? 'text-green-400' : 'text-white/50 hover:text-white'
+            }`}
+            title={isShuffle ? 'Shuffle on' : 'Shuffle off'}
+            type="button"
+          >
+            <Shuffle className="w-4 h-4" />
           </button>
-          <button onClick={previousTrack} className="p-1.5 text-white/70 hover:text-white transition-colors" title="Previous" type="button">
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" /></svg>
+
+          <button
+            onClick={previousTrack}
+            className="p-1.5 text-white/70 hover:text-white transition-colors"
+            title="Previous track"
+            type="button"
+          >
+            <SkipBack className="w-5 h-5 fill-white/70" />
           </button>
-          <button onClick={togglePlay} className="w-8 h-8 rounded-full bg-white flex items-center justify-center hover:scale-105 transition-transform" title={isPlaying ? 'Pause' : 'Play'} type="button">
+
+          <button
+            onClick={togglePlay}
+            className="w-9 h-9 rounded-full bg-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all duration-150 shadow-lg shadow-white/10"
+            title={isPlaying ? 'Pause' : 'Play'}
+            type="button"
+          >
             {isPlaying ? (
-              <svg className="w-4 h-4 text-black" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
+              <Pause className="w-4.5 h-4.5 text-black fill-black" />
             ) : (
-              <svg className="w-4 h-4 text-black ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+              <Play className="w-4.5 h-4.5 text-black fill-black ml-0.5" />
             )}
           </button>
-          <button onClick={nextTrack} className="p-1.5 text-white/70 hover:text-white transition-colors" title="Next" type="button">
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" /></svg>
+
+          <button
+            onClick={nextTrack}
+            className="p-1.5 text-white/70 hover:text-white transition-colors"
+            title="Next track"
+            type="button"
+          >
+            <SkipForward className="w-5 h-5 fill-white/70" />
           </button>
-          <button onClick={cycleRepeat} className={`p-1.5 rounded-full transition-colors ${repeatMode !== 'off' ? 'text-green-400' : 'text-white/50 hover:text-white'}`} title={`Repeat: ${repeatMode}`} type="button">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            {repeatMode === 'one' && <span className="absolute -top-1 -right-1 text-[8px] text-green-400 font-bold">1</span>}
+
+          <button
+            onClick={cycleRepeat}
+            className={`relative p-1.5 rounded-full transition-colors ${
+              repeatMode !== 'off' ? 'text-green-400' : 'text-white/50 hover:text-white'
+            }`}
+            title={`Repeat: ${repeatMode}`}
+            type="button"
+          >
+            {repeatMode === 'one' ? (
+              <Repeat1 className="w-4 h-4" />
+            ) : (
+              <Repeat className="w-4 h-4" />
+            )}
           </button>
         </div>
+
+        {/* Progress bar */}
         <ProgressBar progress={progress} duration={duration} onSeek={seek} />
       </div>
 
-      {/* Volume + Queue */}
-      <div className="flex items-center gap-2 w-[180px] justify-end">
-        <button onClick={toggleQueue} className={`p-1.5 transition-colors ${isQueueOpen ? 'text-green-400' : 'text-white/50 hover:text-white'}`} title="Queue" type="button">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-          </svg>
+      {/* ── Right: Queue + Volume ── */}
+      <div className="flex items-center gap-1.5 w-[30%] justify-end">
+        <button
+          onClick={toggleLyrics}
+          className={`p-1.5 rounded-md transition-colors ${
+            isLyricsOpen ? 'text-green-400 bg-green-400/10' : 'text-white/50 hover:text-white hover:bg-white/5'
+          }`}
+          title="Lyrics"
+          type="button"
+        >
+          <Mic2 className="w-4 h-4" />
         </button>
-        <VolumeControl volume={volume} isMuted={isMuted} onVolumeChange={setVolume} onToggleMute={toggleMute} />
+        <button
+          onClick={toggleQueue}
+          className={`p-1.5 rounded-md transition-colors ${
+            isQueueOpen ? 'text-green-400 bg-green-400/10' : 'text-white/50 hover:text-white hover:bg-white/5'
+          }`}
+          title="Queue"
+          type="button"
+        >
+          <ListMusic className="w-4 h-4" />
+        </button>
+        <VolumeControl
+          volume={volume}
+          isMuted={isMuted}
+          onVolumeChange={setVolume}
+          onToggleMute={toggleMute}
+        />
       </div>
     </div>
   );

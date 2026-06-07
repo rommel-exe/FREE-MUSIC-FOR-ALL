@@ -110,13 +110,24 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   toggleFavorite: async (id) => {
+    const prevTracks = get().tracks;
+    const prevFavorites = get().favorites;
+    const track = prevTracks.find((t) => t.id === id);
+    const wasFavorite = track?.isFavorite ?? false;
+    
+    // Optimistic update
+    set((s) => ({
+      tracks: s.tracks.map((t) => (t.id === id ? { ...t, isFavorite: !t.isFavorite } : t)),
+      favorites: wasFavorite
+        ? s.favorites.filter((t) => t.id !== id)
+        : track ? [...s.favorites, { ...track, isFavorite: true }] : s.favorites,
+    }));
+    
     try {
       await ipc.library.toggleFavorite(id);
-      set((s) => ({
-        tracks: s.tracks.map((t) => (t.id === id ? { ...t, isFavorite: !t.isFavorite } : t)),
-      }));
     } catch (e: any) {
-      set({ error: e.message });
+      // Revert on failure
+      set({ tracks: prevTracks, favorites: prevFavorites, error: e.message });
     }
   },
 

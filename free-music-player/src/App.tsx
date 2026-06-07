@@ -69,17 +69,24 @@ function App() {
     const api = window.electronAPI;
     if (!api?.onGlobalShortcut) return;
 
-    const playPauseHandler = () => togglePlay();
-    const nextHandler = () => nextTrack();
-    const prevHandler = () => previousTrack();
-    const pauseHandler = () => usePlayerStore.getState().pause();
+    const cleanupFns: (() => void)[] = [];
+    const registrations = [
+      { channel: 'global:playPause', handler: () => togglePlay() },
+      { channel: 'global:nextTrack', handler: () => nextTrack() },
+      { channel: 'global:previousTrack', handler: () => previousTrack() },
+      { channel: 'global:pause', handler: () => usePlayerStore.getState().pause() },
+    ];
 
-    api.onGlobalShortcut('global:playPause', playPauseHandler);
-    api.onGlobalShortcut('global:nextTrack', nextHandler);
-    api.onGlobalShortcut('global:previousTrack', prevHandler);
-    api.onGlobalShortcut('global:pause', pauseHandler);
+    for (const { channel, handler } of registrations) {
+      const remove = api.onGlobalShortcut(channel, handler);
+      if (remove) cleanupFns.push(remove);
+    }
 
-    return () => {};
+    return () => {
+      for (const cleanup of cleanupFns) {
+        cleanup();
+      }
+    };
   }, [togglePlay, nextTrack, previousTrack]);
 
   // Mini player mode
@@ -106,6 +113,7 @@ function App() {
         </main>
 
         <QueuePanel />
+        <LyricsPanel />
       </div>
 
       <NowPlayingBar />

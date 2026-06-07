@@ -5,6 +5,8 @@ import {
   type PlaylistImportResult,
 } from '../services/playlistImport';
 import * as db from '../utils/database';
+import { validate, IdSchema } from '../utils/validate';
+import { z } from 'zod';
 
 function generateId(): string {
   try {
@@ -40,7 +42,7 @@ async function importAsPlaylist(
     throw new Error('Invalid playlist URL');
   }
 
-  // ── 1. Fetch the source playlist ──────────────────────────────────────
+  // --- 1. Fetch the source playlist ---
   let source: PlaylistImportResult;
   if (isYoutube) {
     source = await importYouTubePlaylist(trimmed);
@@ -50,7 +52,7 @@ async function importAsPlaylist(
 
   const name = (playlistName?.trim() || source.name || 'Imported Playlist').slice(0, 200);
 
-  // ── 2. Create the playlist row ────────────────────────────────────────
+  // --- 2. Create the playlist row ---
   const playlistId = generateId();
   const playlist = db.createPlaylist({
     id: playlistId,
@@ -61,7 +63,7 @@ async function importAsPlaylist(
     source_url: trimmed,
   });
 
-  // ── 3. Insert tracks + link to playlist ──────────────────────────────
+  // --- 3. Insert tracks + link to playlist ---
   let imported = 0;
   let failed = 0;
   const total = source.tracks.length;
@@ -82,6 +84,7 @@ async function importAsPlaylist(
           thumbnail: t.thumbnail || '',
           youtube_id: t.youtubeId || '',
           source: t.youtubeId ? 'youtube' : isYoutube ? 'youtube' : 'spotify',
+          play_count: 0,
         });
         db.addTrackToPlaylist(playlistId, inserted.id);
         return inserted;
@@ -101,18 +104,22 @@ async function importAsPlaylist(
   };
 }
 
+const NonEmptyStringSchema = z.string().min(1, 'URL cannot be empty').max(2000);
+
 export function registerImportHandlers(): void {
-  ipcMain.handle('import:youtube', async (_event, url: string) => {
+  ipcMain.handle('import:youtube', async (_event, url: unknown) => {
     try {
-      return await importYouTubePlaylist(url);
+      const validatedUrl = validate(NonEmptyStringSchema, url, 'YouTube URL');
+      return await importYouTubePlaylist(validatedUrl);
     } catch (err: any) {
       throw new Error(`YouTube import failed: ${err.message}`);
     }
   });
 
-  ipcMain.handle('import:spotify', async (_event, url: string) => {
+  ipcMain.handle('import:spotify', async (_event, url: unknown) => {
     try {
-      return await importSpotifyPlaylist(url);
+      const validatedUrl = validate(NonEmptyStringSchema, url, 'Spotify URL');
+      return await importSpotifyPlaylist(validatedUrl);
     } catch (err: any) {
       throw new Error(`Spotify import failed: ${err.message}`);
     }
@@ -120,9 +127,11 @@ export function registerImportHandlers(): void {
 
   ipcMain.handle(
     'import:asPlaylist',
-    async (_event, url: string, playlistName?: string) => {
+    async (_event, url: unknown, playlistName?: string) => {
       try {
-        return await importAsPlaylist(url, playlistName);
+        const validatedUrl = validate(NonEmptyStringSchema, url, 'playlist URL');
+        const validatedName = playlistName != null ? validate(z.string().max(200), playlistName, 'playlist name') : undefined;
+        return await importAsPlaylist(validatedUrl, validatedName);
       } catch (err: any) {
         throw new Error(`Playlist import failed: ${err.message}`);
       }

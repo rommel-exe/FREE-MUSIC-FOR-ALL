@@ -89,6 +89,9 @@ export class PlaybackController {
   /** Whether the output is muted. */
   private isMuted = false;
 
+  /** Volume saved before muting so it can be restored on unmute. */
+  private previousVolume = 1;
+
   /** `true` while the audio element is buffering / loading. */
   private isLoading = false;
 
@@ -221,6 +224,7 @@ export class PlaybackController {
    */
   setVolume(volume: number): void {
     this.volume = Math.max(0, Math.min(1, volume));
+    this.previousVolume = this.volume; // Always save the latest volume
     // Unmute when volume is explicitly set to a non-zero value.
     if (this.volume > 0 && this.isMuted) {
       this.isMuted = false;
@@ -232,8 +236,16 @@ export class PlaybackController {
    * Toggle mute on / off.
    */
   toggleMute(): void {
-    this.isMuted = !this.isMuted;
-    this.emit<number>("volume", this.isMuted ? 0 : this.volume);
+    if (this.isMuted) {
+      // Unmute — restore previous volume
+      this.isMuted = false;
+      this.emit<number>("volume", this.volume);
+    } else {
+      // Mute — save current volume and set to 0
+      this.previousVolume = this.volume;
+      this.isMuted = true;
+      this.emit<number>("volume", 0);
+    }
   }
 
   // -----------------------------------------------------------------------
