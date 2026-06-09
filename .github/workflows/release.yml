@@ -23,6 +23,10 @@ on:
 permissions:
   contents: write
 
+defaults:
+  run:
+    working-directory: free-music-player
+
 jobs:
   # ─── Lint & Type-check ──────────────────────────────────────────────────
   check:
@@ -38,6 +42,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: free-music-player/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -68,6 +73,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: free-music-player/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -87,7 +93,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.os }}
-          path: release/
+          path: free-music-player/release/
           retention-days: 7
 
   # ─── Publish (tag push → GitHub Releases) ─────────────────────────────
@@ -111,6 +117,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: free-music-player/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -136,7 +143,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: publish-${{ matrix.os }}
-          path: release/
+          path: free-music-player/release/
           retention-days: 90
 
   # ─── Create GitHub Release (macOS only — publishes notes + points to artifacts) ─
