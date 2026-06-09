@@ -27,7 +27,7 @@ export const mediaResolver = {
    * Optionally pass track metadata so the main process can auto-recover
    * by searching for the official audio if the primary ID fails.
    */
-  async resolve(videoId: string, metadata?: { artist: string; title: string }): Promise<MediaSource | null> {
+  async resolve(videoId: string, metadata?: { artist: string; title: string; expectedDuration?: number; trackId?: string }): Promise<MediaSource | null> {
     try {
       const result = await api?.stream?.resolve?.(videoId, metadata);
       return toMediaSource(videoId, result);
@@ -39,6 +39,13 @@ export const mediaResolver = {
   /** Prefetch a media source in the background (fire-and-forget). */
   prefetch(videoId: string): void {
     api?.stream?.prefetch?.(videoId)?.catch(() => {});
+  },
+
+  /** Batch-prefetch multiple videoIds in parallel on the main process. */
+  async prefetchBatch(videoIds: string[]): Promise<void> {
+    try {
+      await api?.stream?.prefetchBatch?.(videoIds);
+    } catch {}
   },
 
   /**

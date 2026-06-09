@@ -12,7 +12,7 @@ extraResources:
 publish:
   provider: github
   owner: rommel-exe
-  repo: free-music-player
+  repo: FREE-MUSIC-FOR-ALL
   releaseType: release
   # If you fork or move to a different repo, update owner/repo above.
   # Set GH_TOKEN env var when building for publish: GH_TOKEN=xxx npm run electron:build

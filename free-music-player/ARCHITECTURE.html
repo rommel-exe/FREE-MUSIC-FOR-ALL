@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Free Music Player — Operational Architecture</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #0A0A0A;
+    --surface: #1C1C1E;
+    --surface2: #2C2C2E;
+    --border: rgba(84,84,88,0.4);
+    --text: #E5E5E7;
+    --text2: #98989D;
+    --accent: #0A84FF;
+    --green: #30D158;
+    --orange: #FF9F0A;
+    --pink: #FF375F;
+    --purple: #BF5AF2;
+    --teal: #5AC8FA;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 40px 24px;
+  }
+
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  h1 {
+    font-size: 42px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    background: linear-gradient(135deg, #fff 40%, var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 6px;
+  }
+
+  .subtitle {
+    color: var(--text2);
+    font-size: 16px;
+    margin-bottom: 48px;
+    font-weight: 400;
+  }
+
+  h2 {
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 48px 0 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  h2 .badge {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 100px;
+    background: var(--accent);
+    color: #fff;
+    -webkit-text-fill-color: #fff;
+  }
+
+  h3 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 28px 0 12px;
+    color: var(--text);
+  }
+
+  h4 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 20px 0 8px;
+    color: var(--text);
+    opacity: 0.85;
+  }
+
+  p, li { color: var(--text2); font-size: 15px; }
+
+  p { margin-bottom: 14px; }
+
+  ul, ol { padding-left: 20px; margin-bottom: 16px; }
+  li { margin-bottom: 6px; }
+
+  strong { color: var(--text); font-weight: 600; }
+  code {
+    background: var(--surface);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    color: var(--teal);
+    border: 1px solid var(--border);
+  }
+
+  .mermaid-wrapper {
+    background: var(--surface);
+    border-radius: 16px;
+    padding: 24px 16px 8px;
+    border: 1px solid var(--border);
+    margin: 24px 0;
+    overflow-x: auto;
+  }
+
+  .mermaid-wrapper svg { max-width: 100%; height: auto; }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin: 20px 0;
+  }
+
+  .card {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid var(--border);
+  }
+
+  .card h4 {
+    margin-top: 0;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+  }
+
+  .card p { font-size: 14px; margin-bottom: 0; }
+
+  .process-box {
+    background: var(--surface2);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin: 12px 0;
+    border-left: 3px solid var(--accent);
+  }
+
+  .process-box.green { border-left-color: var(--green); }
+  .process-box.orange { border-left-color: var(--orange); }
+  .process-box.pink { border-left-color: var(--pink); }
+  .process-box.purple { border-left-color: var(--purple); }
+
+  .process-box h4 { margin: 0 0 4px; font-size: 14px; }
+  .process-box p, .process-box code { font-size: 13px; margin: 0; }
+
+  .table-wrap {
+    overflow-x: auto;
+    margin: 16px 0;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  th {
+    background: var(--surface2);
+    color: var(--text2);
+    font-weight: 600;
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text2);
+  }
+
+  tr:last-child td { border-bottom: none; }
+  td:first-child { color: var(--text); font-weight: 500; font-family: 'SF Mono', monospace; font-size: 12px; }
+
+  .tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 100px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .tag.main { background: rgba(10,132,255,0.15); color: var(--accent); }
+  .tag.renderer { background: rgba(48,209,88,0.15); color: var(--green); }
+  .tag.engine { background: rgba(255,159,10,0.15); color: var(--orange); }
+  .tag.store { background: rgba(191,90,242,0.15); color: var(--purple); }
+  .tag.ipc { background: rgba(90,200,250,0.15); color: var(--teal); }
+
+  .flow-list {
+    list-style: none;
+    padding: 0;
+  }
+
+  .flow-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 14px;
+    background: var(--surface);
+    border-radius: 8px;
+    margin-bottom: 6px;
+    border: 1px solid var(--border);
+    font-size: 14px;
+    color: var(--text2);
+  }
+
+  .flow-list li .step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .flow-list li strong { color: var(--text); }
+
+  .analysis-callout {
+    background: linear-gradient(135deg, rgba(10,132,255,0.08), rgba(90,200,250,0.04));
+    border: 1px solid rgba(10,132,255,0.2);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin: 20px 0;
+  }
+
+  .analysis-callout h4 { color: var(--accent); margin-top: 0; }
+  .analysis-callout p { margin-bottom: 0; font-size: 14px; }
+
+  @media (max-width: 768px) {
+    .grid-2 { grid-template-columns: 1fr; }
+    body { padding: 20px 14px; }
+    h1 { font-size: 28px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Free Music Player</h1>
+<p class="subtitle">Operational Architecture — System Analysis &amp; Data Flow Documentation</p>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- 1. HIGH-LEVEL SYSTEM ARCHITECTURE -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2>1. High-Level System Architecture <span class="badge">Overview</span></h2>
+<p>
+  The app follows the standard Electron two-process model: a <strong>Main Process</strong> (Node.js)
+  that owns the SQLite database, file system, and network resolution, and a <strong>Renderer Process</strong>
+  (Chromium) that runs React, Zustand stores, and the audio playback engine. Communication happens
+  exclusively through <strong>IPC</strong> via <code>ipcRenderer.invoke</code> / <code>ipcMain.handle</code>
+  behind a typed TypeScript wrapper.
+</p>
+
+<div class="mermaid-wrapper">
+<div class="mermaid">
+graph TB
+    subgraph MAIN["MAIN PROCESS (Node.js)"]
+        DB[("SQLite Database<br/>tracks │ playlists │ queue<br/>favorites │ session │ cache")]
+        MR[MediaResolver<br/>HTTP Proxy Server]
+        DS[DownloadService<br/>yt-dlp]
+        PI[Playlist Import<br/>ytmusic-api]
+        AE[Alignment Engine<br/>Whisper Base]
+        IPC_H[IPC Handlers<br/>70+ channels]
+        DB --- IPC_H
+        MR --- IPC_H
+        DS --- IPC_H
+        PI --- IPC_H
+        AE --- IPC_H
+    end
+
+    subgraph RENDERER["RENDERER PROCESS (Chromium)"]
+        IPCW[IPC Wrapper<br/>src/utils/ipc.ts]
+        ZS[Zustand Stores<br/>playerStore │ libraryStore │ uiStore]
+        ENG[Engines<br/>queueEngine │ playbackController<br/>prefetchEngine │ queryEngine<br/>recommendationEngine]
+        AP[AudioPlayer<br/>2× HTMLAudioElement<br/>Dual-buffer gapless]
+        UI[React UI<br/>Pages │ Components]
+        IPCW --> ZS
+        ZS --> UI
+        ZS -.-> ENG
+        ENG --> AP
+    end
+
+    IPC_H <==> |ipcRenderer.invoke| IPCW
+    AP --> |HTTP GET :8080/stream/id| MR
+    MR --> |net.request → YouTube CDN| AP
+
+    style MAIN fill:#1a1a2e,stroke:#0A84FF,stroke-width:2px
+    style RENDERER fill:#1a2e1a,stroke:#30D158,stroke-width:2px
+</div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <h4>🔵 Main Process</h4>
+    <p>Node.js runtime. Owns all I/O: SQLite database, file system (downloads, cache), network (yt-dlp, YouTube Music API). Runs the HTTP proxy server for audio streaming. Handles all IPC requests from the renderer.</p>
+  </div>
+  <div class="card">
+    <h4>🟢 Renderer Process</h4>
+    <p>Chromium browser context. Runs React, Zustand stores, and the engine layer. The AudioPlayer component owns two HTMLAudioElements and communicates with the MediaResolver's HTTP proxy for audio data. All database access goes through IPC.</p>
+  </div>
+</div>
+
+<div class="analysis-callout">
+  <h4>🔍 Architectural Analysis: Process Boundary</h4>
+  <p>
+    The clean process boundary is this app's strongest architectural property. Every database read/write,
+    every network request, every file system operation goes through typed IPC channels. This means the
+    renderer could theoretically be swapped for a web frontend — the entire "backend" is already
+    abstracted behind an IPC contract. <strong>Potential concern</strong>: the IPC bridge is the bottleneck
+    for any operation that requires many round-trips (e.g., resolving 50 tracks at once). The app mitigates
+    this with batch operations (verify) and background prefetching.
+  </p>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- 2. STATE MANAGEMENT -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2>2. State Architecture <span class="badge">Zustand</span></h2>
+<p>
+  Three Zustand stores manage all application state. The <strong>engine layer</strong> (queueEngine,
+  playbackController) is the <em>source of truth</em> for playback state — the Zustand stores are
+  <em>mirrors</em> synced via <code>syncFromEngine()</code> after every mutation. This prevents
+  React from being the single source of truth for time-sensitive playback state.
+</p>
+
+<div class="grid-2">
+  <div class="card">
+    <h4>playerStore</h4>
+    <p><code>currentTrack</code> · <code>isPlaying</code> · <code>progress</code> · <code>duration</code> · <code>volume</code> · <code>isMuted</code> · <code>isLoading</code> · <code>isShuffle</code> · <code>repeatMode</code> · <code>queue</code> · <code>queueIndex</code> · <code>queueHistory</code></p>
+    <p style="margin-top:8px;font-size:13px;">Mirrored from <strong>queueEngine</strong> + <strong>playbackController</strong> via <code>syncFromEngine()</code>. Session persists via debounced save (1s).</p>
+  </div>
+  <div class="card">
+    <h4>libraryStore</h4>
+    <p><code>tracks[]</code> · <code>favorites[]</code> · <code>recentlyPlayed[]</code> · <code>playlists[]</code> · <code>searchQuery</code> · <code>sortBy</code> · <code>sortOrder</code></p>
+    <p style="margin-top:8px;font-size:13px;">Populated via IPC reads from SQLite. <strong>Optimistic updates</strong> on toggleFavorite — flips locally first, then fires IPC. Reverts on failure.</p>
+  </div>
+  <div class="card">
+    <h4>uiStore</h4>
+    <p><code>currentPage</code> · <code>theme</code> · <code>modalOpen</code> · <code>toasts</code> · <code>isQueueOpen</code> · <code>isLyricsOpen</code> · <code>selectedPlaylistId</code> · <code>libraryTab</code></p>
+    <p style="margin-top:8px;font-size:13px;">Pure presentation state. No engines, no persistence. Drives page routing (<code>currentPage</code> → page map in App.tsx).</p>
+  </div>
+</div>
+
+<div class="process-box">
+  <h4>🔄 Sync Pattern</h4>
+  <p><code>engine mutation → syncFromEngine() → Zustand set() → React re-render → debouncedSave() → IPC → SQLite</code></p>
+  <p style="margin-top:6px;">The 1-second debounce on session saves prevents write storms during rapid queue operations (drag-reorder, skip, shuffle).</p>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- 3. AUDIO PLAYBACK PIPELINE -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2>3. Audio Playback Pipeline <span class="badge">Critical Path</span></h2>
+<p>
+  This is the most latency-sensitive path in the app. From click to audio, the track goes through
+  <strong>5 layers</strong> — store → engine → AudioPlayer → MediaResolver → YouTube CDN.
+</p>
+
+<div class="mermaid-wrapper">
+<div class="mermaid">
+sequenceDiagram
+    participant U as React UI
+    participant PS as playerStore
+    participant QC as queueEngine
+    participant PC as playbackController
+    participant AP as AudioPlayer
+    participant PE as prefetchEngine
+    participant MR as MediaResolver (Main)
+
+    U->>PS: playTrack(track)
+    PS->>QC: setQueue([track], 0)
+    PS->>PC: play(track)
+    PC-->>PS: syncFromEngine()
+
+    Note over AP: useEffect([currentTrack])
+    AP->>PE: getSource(videoId)
+    alt Cache MISS
+        AP->>MR: ipc.stream.resolve(videoId)
+        MR->>MR: tryResolve()
+        MR->>MR: yt-dlp --get-url
+        MR-->>AP: MediaSource { audioUrl }
+        AP->>PE: setSource(videoId, source)
+    end
+
+    AP->>AP: activeElement.src = proxyUrl
+    AP->>AP: activeElement.load()
+    AP->>AP: activeElement.play()
+
+    Note over AP,MR: HTTP streaming
+    AP->>MR: GET /stream/videoId
+    MR->>MR: net.request(YouTube CDN)
+    MR-->>AP: audio bytes (piped)
+
+    AP->>AP: 100ms progress poller
+    AP-->>PC: setProgress(time)
+    PC-->>PS: syncFromEngine() → UI progress bar
+</div>
+</div>
+
+<h3>Step-by-Step: Click → Audio</h3>
+<ol class="flow-list">
+  <li><span class="step">1</span> <strong>playerStore.playTrack(track)</strong> — sets queue, triggers playbackController, records play, persists history</li>
+  <li><span class="step">2</span> <strong>playbackController.play(track)</strong> — emits <code>trackChange</code>, <code>play</code>, <code>loading</code>, <code>duration</code> events</li>
+  <li><span class="step">3</span> <strong>AudioPlayer</strong> — picks up <code>currentTrack</code> change via useEffect</li>
+  <li><span class="step">4</span> <strong>prefetchEngine.getSource(videoId)</strong> — check in-memory cache (populated by background prefetch)</li>
+  <li><span class="step">5</span> <strong>ipc.stream.resolve(videoId)</strong> — main process resolves actual YouTube audio URL via yt-dlp</li>
+  <li><span class="step">6</span> <strong>MediaResolver.tryResolve()</strong> — 4-tier cache check (memory → SQLite → verified → yt-dlp fetch)</li>
+  <li><span class="step">7</span> <strong>Set audio element src</strong> — <code>http://127.0.0.1:&lt;port&gt;/stream/&lt;videoId&gt;</code></li>
+  <li><span class="step">8</span> <strong>HTTP proxy streaming</strong> — MediaResolver proxies <code>net.request</code> → YouTube CDN, pipes back to HTMLAudioElement</li>
+  <li><span class="step">9</span> <strong>100ms progress poller</strong> — drives UI progress bar, triggers adaptive prefetch, updates audioBridge</li>
+</ol>
+
+<h3>Dual-Buffer Gapless Playback</h3>
+<div class="grid-2">
+  <div class="card">
+    <h4>Element A (Active)</h4>
+    <p>Currently playing audio. 100ms poller reads <code>currentTime</code>, <code>duration</code>. Emits progress to playbackController.</p>
+  </div>
+  <div class="card">
+    <h4>Element B (Standby)</h4>
+    <p>Preloads next track's source in background. When track changes, if <code>readyState ≥ 3</code> (HAVE_FUTURE_DATA): instant gapless swap. Otherwise: normal load fallback.</p>
+  </div>
+</div>
+
+<div class="process-box pink">
+  <h4>⚠️ Circuit Breaker</h4>
+  <p>Tracks errors in a 10-second sliding window. If >3 errors occur, auto-advance is disabled to prevent infinite error loops (e.g., when all queued tracks are unavailable).</p>
+</div>
+
+<div class="analysis-callout">
+  <h4>🔍 Architectural Analysis: Audio Pipeline</h4>
+  <p>
+    <strong>Strengths:</strong> The local HTTP proxy is an elegant solution to Electron's streaming limitations.
+    Using <code>net.request</code> (Chromium's network stack) instead of Node's http avoids CORS issues and
+    correctly handles YouTube's CDN redirects. The dual-buffer architecture is a pragmatic approach to gapless
+    playback without Web Audio API complexity.
+  </p>
+  <p style="margin-top:10px;">
+    <strong>Weaknesses:</strong> Two full HTMLAudioElement instances consume ~30-50MB each. The 100ms
+    polling interval means the UI is always 100ms behind actual audio position. There's no
+    <code>AudioContext</code> or Web Audio API — meaning no visualizer support, no cross-fading, no
+    real-time audio processing. The proxy also introduces a serialization hop (HTTP) for every byte
+    of audio — negligible for streaming but not ideal.
+  </p>
+  <p style="margin-top:10px;">
+    <strong>Recommendation:</strong> For a future v2, consider Media Source Extensions (MSE) with
+    <code>MediaSource</code> API for true gapless, or Web Audio API for visualization and effects.
+    The dual-buffer approach is a good intermediate solution.
+  </p>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- 4. ENGINE ARCHITECTURE -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2>4. Engine Layer <span class="badge">Singletons</span></h2>
+<p>
+  Five singleton engines form the <strong>business logic layer</strong> between the UI and audio.
+  They are pure TypeScript classes with no React dependency — they could run in any JavaScript context.
+</p>
+
+<div class="mermaid-wrapper">
+<div class="mermaid">
+graph LR
+    subgraph ENGINES["Engine Layer (singletons)"]
+        QE[queueEngine<br/>Queue state machine]
+        PC[playbackController<br/>Event emitter]
+        PRE[prefetchEngine<br/>Background resolver]
+        QRY[queryEngine<br/>Search + cache]
+        RE[recommendationEngine<br/>History + artist seeds]
+    end
+
+    subgraph STORES["Zustand Store Mirror"]
+        PS[playerStore]
+    end
+
+    subgraph AUDIO["Audio Layer"]
+        AP[AudioPlayer<br/>HTMLAudioElements]
+    end
+
+    subgraph IPC["IPC Layer"]
+        I[ipc.ts wrapper]
+    end
+
+    QE --> PC
+    PC --> PS
+    PS --> AP
+    PRE --> I
+    QRY --> I
+    RE --> I
+    AP -.-> PC
+    AP --> PRE
+
+    style ENGINES fill:#2a2a0a,stroke:#FF9F0A,stroke-width:2px
+    style STORES fill:#1a0a2a,stroke:#BF5AF2,stroke-width:2px
+    style AUDIO fill:#1a2e1a,stroke:#30D158,stroke-width:2px
+    style IPC fill:#0a2a2a,stroke:#5AC8FA,stroke-width:2px
+</div>
+</div>
+
+<div class="grid-2">
+  <div class="process-box">
+    <h4>queueEngine</h4>
+    <p>Pure in-memory queue state machine. <code>setQueue</code> · <code>next</code> · <code>previous</code> · <code>add</code> · <code>playNext</code> · <code>remove</code> · <code>reorder</code> · <code>shuffle</code> · <code>setRepeatMode</code>. Handles dedup, repeat modes (off/all/one), and Fisher-Yates shuffle.</p>
+  </div>
+  <div class="process-box green">
+    <h4>playbackController</h4>
+    <p>Event-driven state machine. Emits <code>trackChange</code>, <code>play</code>, <code>pause</code>, <code>progress</code>, <code>duration</code>, <code>volume</code>, <code>loading</code>, <code>error</code>. Subscribers: syncFromEngine, audioBridge, recommendationEngine.</p>
+  </div>
+  <div class="process-box orange">
+    <h4>prefetchEngine</h4>
+    <p>Background MediaSource resolver. Pre-resolves next N tracks (adaptive: 5 burst, then 3 more at 45s remaining). Max 4 concurrent resolves. Cache: <code>Map&lt;videoId, MediaSource&gt;</code>.</p>
+  </div>
+  <div class="process-box purple">
+    <h4>queryEngine</h4>
+    <p>Search with 2-layer cache (55-min TTL in-memory, 5-min TTL in main). 150ms debounce. AbortController for stale requests. Fire-and-forget background verification via yt-dlp.</p>
+  </div>
+  <div class="process-box">
+    <h4>recommendationEngine</h4>
+    <p>Local listening history (100-entry). Top 3 artists → search YouTube → filter heard/heavily-skipped. Skip counter: ≥3 skips = excluded.</p>
+  </div>
+</div>
+
+<div class="analysis-callout">
+  <h4>🔍 Architectural Analysis: Engine Pattern</h4>
+  <p>
+    The engine layer is the <strong>most architecturally sound part</strong> of the app. Engines are
+    pure singletons with no React dependency, making them testable and portable. The separation between
+    <code>queueEngine</code> (state machine) and <code>playbackController</code> (event emitter) follows
+    command-query separation. The <code>syncFromEngine</code> bridge is a clean adapter pattern between
+    the engine layer and React's render cycle.
+  </p>
+  <p style="margin-top:10px;">
+    <strong>Potential improvement:</strong> Engines currently live in the renderer process. For a
+    high-performance architecture, they could be moved to the main process or a worker thread,
+    communicating via IPC. This would keep the renderer thread free for UI work during heavy queue
+    operations. However, this would add IPC latency to every playback operation, which is a
+    non-trivial trade-off.
+  </p>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- 5. MEDIA RESOLUTION -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2>5. Media Resolution &amp; Caching <span class="badge">yt-dlp</span></h2>
+<p>
+  The MediaResolver in the main process is responsible for converting a YouTube video ID into a
+  playable audio stream URL. It uses a <strong>4-tier caching strategy</strong> and falls back to
+  yt-dlp for on-demand resolution.
+</p>
+
+<div class="mermaid-wrapper">
+<div class="mermaid">
+graph TD
+    R[ipc.stream.resolve videoId]
+    R --> C1{In-memory cache?}
+    C1 -->|HIT| DONE[Return MediaSource]
+    C1 -->|MISS| C2{SQLite stream_cache?}
+    C2 -->|HIT| DONE
+    C2 -->|MISS| C3{verified_tracks<br/>&lt;1hr + trust ≥80?}
+    C3 -->|HIT| DONE
+    C3 -->|MISS| YT[yt-dlp -j validation]
+    YT --> VALID{Valid?<br/>not live, 30-900s, audio}
+    VALID -->|YES| URL[yt-dlp --get-url]
+    VALID -->|NO| SEARCH[searchOfficialSong]
+    SEARCH --> RANK[4-tier ranking<br/>official+matching → official<br/>→ nonlive+matching → nonlive]
+    RANK --> URL
+    URL --> CACHE[Cache in memory + SQLite]
+    CACHE --> DONE
+
+    style DONE fill:#1a2e1a,color:#30D158
+    style YT fill:#2a2a0a,color:#FF9F0A
+    style SEARCH fill:#2a0a0a,color:#FF375F
+</div>
+</div>
+
+<h3>Cache Hierarchy</h3>
+<table>
+  <tr><th>Tier</th><th>Storage</th><th>TTL</th><th>Latency</th></tr>
+  <tr><td>1. In-memory Map</td><td>JavaScript heap</td><td>Session</td><td>~0.01ms</td></tr>
+  <tr><td>2. SQLite stream_cache</td><td>Disk (better-sqlite3)</td><td>Persistent</td><td>~0.5ms</td></tr>
+  <tr><td>3. Verified tracks</td><td>SQLite + trust score</td><td>1hr if trust ≥ 80</td><td>~0.5ms</td></tr>
+  <tr><td>4. yt-dlp resolve</td><td>Subprocess + YouTube</td><td>N/A (cold)</td><td>~1-5s</td></tr>
+</table>
+
+<div class="process-box orange">
+  <h4>🔁 Auto-Recovery: searchOfficialSong</h4>
+  <p>If primary video is private/deleted/age-restricted, searches ytmusic-api for the official version. 4-tier priority: (1) official audio + duration match → (2) official audio → (3) non-live + duration match → (4) non-live. Filters by <strong>duration tolerance</strong> (±5% or 5s).</p>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- 6. IPC CONTRACT -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2>6. IPC Contract <span class="badge">70+ Channels</span></h2>
+<p>
+  All cross-process communication goes through typed IPC channels. The renderer <strong>never</strong>
+  accesses Node.js APIs directly — everything is mediated by the preload script's contextBridge.
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Group</th><th>Channels</th><th>Purpose</th></tr>
+  <tr><td>library:*</td><td>getTracks, addTrack, removeTrack, toggleFavorite, getFavorites, getRecentlyPlayed, searchTracks, incrementPlayCount, addRecentlyPlayed</td><td>CRUD on track library + favorites + recently played</td></tr>
+  <tr><td>search:*</td><td>searchYouTube, verify, getVerified</td><td>ytmusic-api search + background yt-dlp verification</td></tr>
+  <tr><td>stream:*</td><td>resolve, prefetch, hasCached, getCached</td><td>MediaSource resolution and caching</td></tr>
+  <tr><td>queue:*</td><td>getQueue, addToQueue, playNext, removeFromQueue, reorderQueue, clearQueue</td><td>Persistent queue operations</td></tr>
+  <tr><td>playlist:*</td><td>getPlaylists, createPlaylist, deletePlaylist, addTrack, removeTrack, getTracks, reorder</td><td>Playlist CRUD + track management</td></tr>
+  <tr><td>download:*</td><td>track, cancel, delete, hasDownload, getPath, getAll</td><td>yt-dlp audio download lifecycle</td></tr>
+  <tr><td>import:*</td><td>youtube, spotify, asPlaylist</td><td>Parse external playlist URLs</td></tr>
+  <tr><td>alignment:*</td><td>align, getCached, removeCached, downloadModel, status</td><td>Whisper-based lyric alignment</td></tr>
+  <tr><td>settings:*</td><td>getSettings, updateSettings, getSession, saveSession</td><td>App state persistence</td></tr>
+  <tr><td>app:*</td><td>getVersion</td><td>App metadata</td></tr>
+  <tr><td>Main→Renderer</td><td>global:playPause, global:nextTrack, global:previousTrack, alignment:downloadProgress</td><td>Push events (media keys, progress)</td></tr>
+</table>
+</div>
+
+<div class="analysis-callout">
+  <h4>🔍 Architectural Analysis: IPC Surface Area</h4>
+  <p>
+    70+ channels is a <strong>large but well-organized</strong> surface area. The namespaced pattern
+    (<code>library:*</code>, <code>search:*</code>) is clean and discoverable. Every channel is
+    wrapped in a typed TypeScript function in <code>src/utils/ipc.ts</code>, so callers never deal
+    with raw <code>ipcRenderer.invoke</code> strings.
+  </p>
+  <p style="margin-top:10px;">
+    <strong>Potential concern:</strong> There's no IPC timeout or retry logic. If a yt-dlp subprocess
+    hangs (e.g., rate-limited by YouTube), the IPC call could block indefinitely. The app mitigates
+    this somewhat with AbortController in search, but stream resolution lacks a timeout. Adding
+    timeout handling to <code>ipc.ts</code> would improve robustness.
+  </p>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- 7. DATA FLOWS -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2>7. Key Data Flows <span class="badge">Operations</span></h2>
+
+<h3>7.1 Playing a Song</h3>
+<div class="process-box green">
+  <p><code>Click → playerStore.playTrack() → queueEngine.setQueue() → playbackController.play() → AudioPlayer useEffect → prefetchEngine.getSource() → ipc.stream.resolve() → MediaResolver.tryResolve() → yt-dlp --get-url → set src → load → play → 100ms poller → UI progress</code></p>
+</div>
+
+<h3>7.2 Searching</h3>
+<div class="process-box orange">
+  <p><code>Type → queryEngine.search() → normalize → abortPending() → check 55-min cache → MISS → 150ms debounce → ipc.search.searchYouTube() → main: ytmusic-api → trust score → duration match → cache → return Track[] → background verify()</code></p>
+</div>
+
+<h3>7.3 Queue Management</h3>
+<div class="grid-2">
+  <div class="process-box"><strong>Add:</strong> <code>queueEngine.add() → deup → syncFromEngine → debouncedSave()</code></div>
+  <div class="process-box"><strong>Play Next:</strong> <code>queueEngine.playNext() → insert at +1 → sync → save</code></div>
+  <div class="process-box"><strong>Remove:</strong> <code>queueEngine.remove() → adjust index → sync → save</code></div>
+  <div class="process-box"><strong>Reorder:</strong> <code>queueEngine.reorder() → splice → sync → save</code></div>
+  <div class="process-box"><strong>Next Track:</strong> <code>queueEngine.next() → playbackController.play() → recordPlay → recentlyPlayed → prefetch() → sync → save</code></div>
+  <div class="process-box"><strong>Shuffle:</strong> <code>queueEngine.shuffle(enabled) → Fisher-Yates → keep current at 0 → sync → save</code></div>
+</div>
+
+<h3>7.4 Downloading</h3>
+<div class="process-box pink">
+  <p><code>ipc.download.track() → main: yt-dlp --print ext → yt-dlp -f bestaudio → save to ~/Library/Application Support/.../downloads/ → update track source='local' → future play: serve via /local/&lt;trackId&gt; proxy with Range support</code></p>
+</div>
+
+<h3>7.5 Session Restore</h3>
+<div class="process-box purple">
+  <p><code>App mount → playerStore.restoreSession() → ipc.settings.getSession() → parse JSON from SQLite → restore queue, volume, shuffle, repeat, currentTrack → if wasPlaying → playbackController.play()</code></p>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- 8. TRACK LIFECYCLE -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2>8. Complete Track Lifecycle</h2>
+
+<div class="mermaid-wrapper">
+<div class="mermaid">
+graph LR
+    S[Search] --> A[Add to Library]
+    A --> P[Play]
+    P --> Q[Queue]
+    Q --> PR[Prefetch]
+    Q --> D[Download]
+
+    S -.-> |ytmusic-api + trust scoring| S_RES[SearchResult[]]
+    A -.-> |ipc.library.addTrack| DB[(SQLite tracks)]
+    P -.-> |MediaResolver → yt-dlp → proxy| AUDIO[Audio Output]
+    Q -.-> |queueEngine state machine| Q_ITEM[Queue Slot]
+    PR -.-> |prefetchEngine resolve next 5| CACHE[(Cache)]
+    D -.-> |yt-dlp download → local file| FILE[(Local Audio File)]
+
+    style AUDIO fill:#1a2e1a,color:#30D158
+    style DB fill:#0a2a2a,color:#5AC8FA
+    style FILE fill:#2a0a0a,color:#FF9F0A
+</div>
+</div>
+
+<table>
+  <tr><th>Phase</th><th>Duration</th><th>Key Components</th><th>Critical For</th></tr>
+  <tr><td>Search</td><td>200ms – 2s</td><td>queryEngine, ytmusic-api, trust scorer</td><td>Finding the right version</td></tr>
+  <tr><td>Add to Library</td><td>5ms – 50ms</td><td>ipc.library, SQLite upsert</td><td>Persisting the track</td></tr>
+  <tr><td>Play (cold)</td><td>1s – 5s</td><td>MediaResolver, yt-dlp, HTTP proxy</td><td>Time-to-first-audio</td></tr>
+  <tr><td>Play (cached)</td><td>100ms – 500ms</td><td>In-memory cache, SQLite cache</td><td>Time-to-first-audio</td></tr>
+  <tr><td>Queue</td><td>~1ms</td><td>queueEngine, syncFromEngine</td><td>Responsiveness</td></tr>
+  <tr><td>Prefetch</td><td>1s – 5s (background)</td><td>prefetchEngine, MediaResolver</td><td>Gapless playback</td></tr>
+  <tr><td>Download</td><td>10s – 60s</td><td>DownloadService, yt-dlp</td><td>Offline playback</td></tr>
+</table>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- 9. KEY ARCHITECTURAL DECISIONS -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2>9. Key Architectural Decisions &amp; Analysis</h2>
+
+<div class="card" style="margin-bottom:16px;">
+  <h4>1. Local HTTP Proxy for Audio (instead of protocol.handle or direct streaming)</h4>
+  <p><strong>Why:</strong> Electron's <code>protocol.handle</code> has issues with ReadableStream serialization for large audio streams. The local proxy uses Chromium's <code>net.request</code> which correctly handles YouTube CDN redirects, Range requests, and streaming.</p>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <h4>2. Dual-Process Engine Architecture</h4>
+  <p><strong>Why:</strong> Engines are pure TypeScript singletons (no React dependency) with Zustand as the mirror layer. This decouples business logic from the render cycle, making engines testable and keeping UI rendering predictable.</p>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <h4>3. yt-dlp as Universal Media Resolver</h4>
+  <p><strong>Why:</strong> yt-dlp handles YouTube's ever-changing streaming protocols (DASH, of, etc.), extracts actual audio URLs, and provides format metadata. Building equivalent functionality in-house would be impractical.</p>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <h4>4. SQLite for Everything (better-sqlite3)</h4>
+  <p><strong>Why:</strong> Synchronous SQLite avoids callback complexity for IPC handlers. No ORM — raw SQL queries keep performance predictable. A single <code>free-music-player.db</code> file stores tracks, playlists, queue, session, settings, and caches.</p>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <h4>5. Dual-Buffer Gapless (not Web Audio API)</h4>
+  <p><strong>Why:</strong> Two HTMLAudioElements is the simplest approach to gapless playback. Web Audio API would require manually decoding audio buffers (memory-intensive) and implementing a streaming pipeline (complex). Trade-off: no audio visualization capability.</p>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <h4>6. Optimistic Updates with Revert</h4>
+  <p><strong>Why:</strong> toggleFavorite flips the UI state instantly, then fires the IPC. If the IPC fails, the store reverts. This makes the UI feel instant while maintaining data integrity.</p>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <h4>7. Debounced Session Persistence</h4>
+  <p><strong>Why:</strong> Queue operations (drag-reorder, skip, shuffle) can fire dozens of mutations in seconds. A 1-second debounce on SQLite writes prevents write storms while ensuring the final state is always saved.</p>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <h4>8. Trust Score + Duration Mode for Search Ranking</h4>
+  <p><strong>Why:</strong> YouTube Music returns many results for the same song (official, lyric video, live, cover). Trust scoring (+100 for Topic channel, -1000 for live) combined with duration mode filtering (statistical mode of passing durations) selects the most likely "official" version.</p>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <h4>9. Background Verification Pipeline</h4>
+  <p><strong>Why:</strong> Search results appear immediately (from ytmusic-api), then yt-dlp --dump-json runs in background (concurrency=3) to populate the verification cache before the user clicks play. This splits the UX latency from the verification latency.</p>
+</div>
+
+<div class="card">
+  <h4>10. Circuit Breaker on Audio Errors</h4>
+  <p><strong>Why:</strong> When multiple queued tracks are unavailable (private/deleted/blocked), auto-advancing through them creates an error loop. The circuit breaker (3 failures in 10s) stops auto-advance and lets the user manually intervene.</p>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- 10. VULNERABILITIES & RECOMMENDATIONS -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2>10. Vulnerabilities &amp; Recommendations</h2>
+
+<div class="grid-2">
+  <div class="card" style="border-left: 3px solid #FF375F;">
+    <h4 style="color: #FF375F;">🔴 No IPC Timeout</h4>
+    <p>Stream resolution can hang indefinitely if yt-dlp is rate-limited. Add configurable timeouts to all IPC calls, with fallback behavior (skip track, show error toast).</p>
+  </div>
+  <div class="card" style="border-left: 3px solid #FF375F;">
+    <h4 style="color: #FF375F;">🔴 No Service Worker</h4>
+    <p>Offline support is limited to downloaded tracks. A service worker with a Cache-First strategy for search results and resolved streams would make the app feel instant even without network.</p>
+  </div>
+  <div class="card" style="border-left: 3px solid #FF9F0A;">
+    <h4 style="color: #FF9F0A;">🟡 No Web Audio API</h4>
+    <p>HTMLAudioElement limits prevent audio visualization, cross-fading, and EQ. Consider optional Web Audio API integration for the full-player view.</p>
+  </div>
+  <div class="card" style="border-left: 3px solid #FF9F0A;">
+    <h4 style="color: #FF9F0A;">🟡 Memory: Two Audio Elements</h4>
+    <p>Two HTMLAudioElements means ~60-100MB baseline memory just for audio playback. Consider lazy-loading the standby element only when there's a next track.</p>
+  </div>
+  <div class="card" style="border-left: 3px solid #FF9F0A;">
+    <h4 style="color: #FF9F0A;">🟡 Engine Layer in Renderer</h4>
+    <p>Engines run in the Chromium renderer process. Heavy queue operations (large shuffle) could block UI rendering. Moving engines to a Web Worker or main process would free the UI thread.</p>
+  </div>
+  <div class="card" style="border-left: 3px solid #5AC8FA;">
+    <h4 style="color: #5AC8FA;">🔵 Exportable IPC Contract</h4>
+    <p>The typed IPC wrapper (<code>src/utils/ipc.ts</code>) is already a clean API surface. This could be extracted into an NPM package or used to build a web-compatible backend.</p>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- FOOTER -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<div style="margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border); text-align: center; color: var(--text2); font-size: 13px;">
+  Free Music Player — Operational Architecture Document<br/>
+  Generated from source code analysis. Last updated June 2026.
+</div>
+
+</div>
+
+<script>
+  mermaid.initialize({
+    theme: 'dark',
+    themeVariables: {
+      fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
+      fontSize: '14px',
+      primaryColor: '#0A84FF',
+      primaryTextColor: '#E5E5E7',
+      primaryBorderColor: 'rgba(84,84,88,0.4)',
+      lineColor: '#30D158',
+      secondaryColor: '#2C2C2E',
+      tertiaryColor: '#1C1C1E',
+      background: '#0A0A0A',
+      mainBkg: '#1C1C1E',
+      nodeBorder: 'rgba(84,84,88,0.4)',
+      clusterBkg: '#1C1C1E',
+      clusterBorder: 'rgba(84,84,88,0.3)',
+      titleColor: '#E5E5E7',
+      edgeLabelBackground: '#1C1C1E',
+      nodeTextColor: '#E5E5E7',
+    }
+  });
+</script>
+</body>
+</html>

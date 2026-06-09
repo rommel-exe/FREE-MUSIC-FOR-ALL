@@ -1,8 +1,14 @@
 import { useState, useRef, useCallback, memo } from 'react';
+import { motion } from 'framer-motion';
 import { usePlayerStore } from '@/store/playerStore';
 import { useUIStore } from '@/store/uiStore';
 import type { Track } from '@/types';
-import { X, Music, GripVertical, Play } from 'lucide-react';
+import { X, GripVertical, ListMusic } from 'lucide-react';
+import { thumbGradient, thumbLetter } from '@/utils/thumb';
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
 
 function formatTime(seconds: number): string {
   if (!seconds || !Number.isFinite(seconds)) return '0:00';
@@ -12,13 +18,42 @@ function formatTime(seconds: number): string {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Equalizer bars — animated playing indicator                         */
+/* ------------------------------------------------------------------ */
+
+const EqualizerBars = memo(function EqualizerBars({
+  className = '',
+}: {
+  className?: string;
+}) {
+  return (
+    <div className={`flex items-end gap-[2px] h-3.5 ${className}`}>
+      <motion.span
+        className="w-[3px] rounded-full bg-green-400"
+        animate={{ height: ['30%', '100%', '50%', '80%', '30%'] }}
+        transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      <motion.span
+        className="w-[3px] rounded-full bg-green-400"
+        animate={{ height: ['60%', '30%', '100%', '40%', '60%'] }}
+        transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut', delay: 0.2 }}
+      />
+      <motion.span
+        className="w-[3px] rounded-full bg-green-400"
+        animate={{ height: ['80%', '50%', '30%', '100%', '80%'] }}
+        transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut', delay: 0.4 }}
+      />
+    </div>
+  );
+});
+
+/* ------------------------------------------------------------------ */
 /*  Queue item row                                                      */
 /* ------------------------------------------------------------------ */
 
 const QueueItem = memo(function QueueItem({
   track,
   index,
-  isCurrent,
   isPlaying,
   onPlay,
   onRemove,
@@ -31,7 +66,6 @@ const QueueItem = memo(function QueueItem({
 }: {
   track: Track;
   index: number;
-  isCurrent: boolean;
   isPlaying: boolean;
   onPlay: (index: number) => void;
   onRemove: (index: number) => void;
@@ -42,56 +76,76 @@ const QueueItem = memo(function QueueItem({
   dragIndex: number | null;
   dragOverIndex: number | null;
 }) {
-  const [hovered, setHovered] = useState(false);
-
   return (
     <div
+      role="button"
+      tabIndex={0}
       draggable
       onDragStart={(e) => onDragStart(e, index)}
       onDragOver={(e) => onDragOver(e, index)}
       onDrop={(e) => onDrop(e, index)}
       onDragEnd={onDragEnd}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      className={`flex items-center gap-3 px-2 py-2 rounded-md transition-colors cursor-grab active:cursor-grabbing ${
-        dragIndex === index ? 'opacity-40' : ''
-      } ${dragOverIndex === index ? 'border-t-2 border-green-400' : ''} hover:bg-white/5 group`}
+      onClick={() => {
+        if (dragIndex === null) onPlay(index);
+      }}
+      onKeyDown={(e) => {
+        if ((e.key === 'Enter' || e.key === ' ') && dragIndex === null) {
+          e.preventDefault();
+          onPlay(index);
+        }
+      }}
+      className={`group flex items-center gap-3 px-2 py-1.5 rounded-lg transition-all duration-200 cursor-pointer
+        ${dragIndex === index ? 'opacity-40 scale-[0.98]' : ''}
+        ${dragOverIndex === index ? 'border-t-2 border-green-400/60' : 'border-t-2 border-transparent'}
+        hover:bg-white/[0.04]`}
     >
-      {/* Drag handle */}
-      <div className="text-white/20 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-        <GripVertical className="w-3.5 h-3.5" />
+      {/* Drag handle — visible on hover */}
+      <div className="text-white/20 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 cursor-grab active:cursor-grabbing">
+        <GripVertical className="w-4 h-4" />
       </div>
 
-      {/* Thumbnail — 44px */}
-      <div className="w-11 h-11 rounded-md bg-white/10 flex-shrink-0 overflow-hidden">
+      {/* Thumbnail — 36px */}
+      <div
+        className="w-9 h-9 rounded-md flex-shrink-0 overflow-hidden"
+        style={{ background: thumbGradient(track.id) }}
+      >
         {track.thumbnail ? (
-          <img src={track.thumbnail} alt={track.title} className="w-full h-full object-cover" loading="lazy" />
+          <img
+            src={track.thumbnail}
+            alt={track.title}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <Music className="w-4 h-4 text-white/25" />
+          <div className="w-full h-full flex items-center justify-center text-[11px] font-semibold text-white/60">
+            {thumbLetter(track.title)}
           </div>
         )}
       </div>
 
-      {/* Info */}
-      <div className="flex-1 min-w-0">
-        <div className={`text-sm truncate font-medium ${isCurrent ? 'text-green-400' : 'text-white'}`}>
-          {track.title}
-        </div>
-        <div className="text-xs text-white/50 truncate">{track.artist}</div>
+      {/* Info — single line: Artist · Title */}
+      <div className="flex-1 min-w-0 text-[12px] leading-tight truncate">
+        <span className="text-white/40">{track.artist}</span>
+        <span className="text-white/40 mx-1">·</span>
+        <span className="text-white/80">{track.title}</span>
       </div>
 
-      {/* Duration */}
-      <span className="text-xs text-white/30 tabular-nums flex-shrink-0">{formatTime(track.duration)}</span>
+      {/* Duration — monospace */}
+      <span className="text-[10px] text-white/25 font-mono tabular-nums flex-shrink-0 tracking-tight">
+        {formatTime(track.duration)}
+      </span>
 
       {/* Remove button */}
       <button
-        onClick={(e) => { e.stopPropagation(); onRemove(index); }}
-        className="p-1 opacity-0 group-hover:opacity-100 hover:bg-white/10 rounded transition-all flex-shrink-0"
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove(index);
+        }}
+        className="p-1 text-white/0 group-hover:text-white/40 hover:!text-white/80 hover:bg-white/[0.08] rounded-md transition-all flex-shrink-0"
         type="button"
         title="Remove from queue"
       >
-        <X className="w-3.5 h-3.5 text-white/50" />
+        <X className="w-3.5 h-3.5" />
       </button>
     </div>
   );
@@ -134,7 +188,6 @@ export const QueuePanel = memo(function QueuePanel() {
       const fromIndex = dragItemRef.current;
       if (fromIndex === null || fromIndex === toIndex) return;
 
-      // Map from "upcoming" indices (0-based after current) to absolute queue indices
       const actualFromIndex = queueIndex + 1 + fromIndex;
       const actualToIndex = queueIndex + 1 + toIndex;
 
@@ -171,76 +224,94 @@ export const QueuePanel = memo(function QueuePanel() {
   if (!isQueueOpen) return null;
 
   return (
-    <div className="w-80 bg-[#0a0a0a] border-l border-white/5 flex flex-col h-full">
-      {/* Header */}
-      <div className="relative">
-        <div className="absolute inset-0 h-24 bg-gradient-to-b from-white/[0.03] to-transparent pointer-events-none" />
-        <div className="relative flex items-center justify-between p-4 pb-3">
-          <div>
-            <h2 className="text-lg font-bold text-white">Queue</h2>
-            <p className="text-xs text-white/40 mt-0.5">
-              {currentTrack ? `Now playing + ${upcoming.length} in queue` : 'Empty queue'}
-            </p>
-          </div>
+    <motion.div
+      initial={{ width: 0, opacity: 0 }}
+      animate={{ width: 320, opacity: 1 }}
+      exit={{ width: 0, opacity: 0 }}
+      transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] as const }}
+      className="glass-sidebar border-l border-mac-separator flex flex-col h-full overflow-hidden"
+    >
+      <div className="w-80 flex flex-col h-full">
+        {/* ── Header ─────────────────────────────────────── */}
+        <div className="flex items-center justify-between px-3 py-3 no-drag">
+          <h2 className="text-white/90 font-semibold">
+            Queue
+            {currentTrack && (
+              <span className="text-[11px] text-white/30 font-mono tabular-nums ml-2">
+                {upcoming.length}
+              </span>
+            )}
+          </h2>
+
           <button
             onClick={toggleQueue}
-            className="p-1.5 hover:bg-white/10 rounded-md transition-colors text-white/50 hover:text-white"
+            className="p-1.5 -mr-1 rounded-lg text-white/40 hover:text-white hover:bg-white/[0.08] active:bg-white/[0.12] transition-all"
             type="button"
             title="Close queue"
           >
-            <X className="w-4.5 h-4.5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
-      </div>
 
-      {/* Now playing */}
-      {currentTrack && (
-        <div className="px-3 pb-3">
-          <div className="relative rounded-lg overflow-hidden bg-white/[0.04] border-l-2 border-green-400">
-            <div className="flex items-center gap-3 p-3">
-              <div className="w-14 h-14 rounded-md bg-white/10 flex-shrink-0 overflow-hidden shadow-lg shadow-black/30">
-                {currentTrack.thumbnail ? (
-                  <img src={currentTrack.thumbnail} alt={currentTrack.title} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <Music className="w-5 h-5 text-white/25" />
-                  </div>
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold text-green-400 truncate">{currentTrack.title}</div>
-                <div className="text-xs text-white/50 truncate">{currentTrack.artist}</div>
-              </div>
-              {isPlaying && (
-                <div className="flex items-center gap-0.5">
-                  <div className="w-0.5 h-3 bg-green-400 rounded-full animate-pulse" />
-                  <div className="w-0.5 h-4 bg-green-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />
-                  <div className="w-0.5 h-2 bg-green-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }} />
+        {/* ── Now Playing ────────────────────────────────── */}
+        {currentTrack && (
+          <div className="px-3 mb-3">
+            <div className="rounded-xl bg-white/[0.04] border-l-2 border-green-400 p-3.5">
+              <div className="flex items-center gap-3">
+                {/* 64px thumbnail */}
+                <div
+                  className="w-16 h-16 rounded-xl flex-shrink-0 overflow-hidden"
+                  style={{ background: thumbGradient(currentTrack.id) }}
+                >
+                  {currentTrack.thumbnail ? (
+                    <img
+                      src={currentTrack.thumbnail}
+                      alt={currentTrack.title}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-lg font-semibold text-white/60">
+                      {thumbLetter(currentTrack.title)}
+                    </div>
+                  )}
                 </div>
-              )}
+
+                {/* Info */}
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-green-400 truncate">
+                    {currentTrack.title}
+                  </div>
+                  <div className="text-xs text-white/40 truncate">
+                    {currentTrack.artist}
+                  </div>
+                </div>
+
+                {/* Playing indicator */}
+                <div className="flex-shrink-0">
+                  {isPlaying ? (
+                    <EqualizerBars />
+                  ) : (
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-400/50" />
+                  )}
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Divider */}
-      <div className="mx-4 border-t border-white/5" />
+        {/* ── Up Next List ───────────────────────────────── */}
+        <div className="flex-1 overflow-y-auto scrollbar-thin">
+          {upcoming.length > 0 ? (
+            <div className="px-3 pt-3 pb-1">
+              <div className="text-[11px] font-semibold text-white/35 uppercase tracking-wider mb-1 select-none">
+                Up Next · {upcoming.length}
+              </div>
 
-      {/* Up next list */}
-      <div className="flex-1 overflow-y-auto">
-        {upcoming.length > 0 ? (
-          <div className="p-2">
-            <div className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2 px-2">
-              Up Next · {upcoming.length}
-            </div>
-            {upcoming.map((track, i) => {
-              const actualIndex = queueIndex + 1 + i;
-              return (
+              {upcoming.map((track, i) => (
                 <QueueItem
-                  key={`${track.id}-${actualIndex}`}
+                  key={track.id}
                   track={track}
                   index={i}
-                  isCurrent={false}
                   isPlaying={isPlaying}
                   onPlay={handlePlay}
                   onRemove={handleRemove}
@@ -251,19 +322,22 @@ export const QueuePanel = memo(function QueuePanel() {
                   dragIndex={dragIndex}
                   dragOverIndex={dragOverIndex}
                 />
-              );
-            })}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full text-center px-6">
-            <div className="w-16 h-16 rounded-full bg-white/[0.03] flex items-center justify-center mb-4 border border-white/5">
-              <Music className="w-7 h-7 text-white/15" />
+              ))}
             </div>
-            <p className="text-white/30 text-sm font-medium">Queue is empty</p>
-            <p className="text-xs text-white/20 mt-1">Add songs to see them here</p>
-          </div>
-        )}
+          ) : (
+            /* ── Empty state ────────────────────────────── */
+            <div className="flex flex-col items-center justify-center h-full text-center px-3">
+              <div className="mb-4">
+                <ListMusic className="w-7 h-7 text-white/15" />
+              </div>
+              <p className="text-[13px] text-white/35 font-medium">Queue is empty</p>
+              <p className="text-[11px] text-white/20 mt-1.5 leading-relaxed">
+                Add songs to see them here
+              </p>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </motion.div>
   );
 });

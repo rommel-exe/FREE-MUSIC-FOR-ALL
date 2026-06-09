@@ -15,7 +15,9 @@ export function registerLibraryHandlers(): void {
   ipcMain.handle('library:addTrack', (_event, track: any) => {
     try {
       const data = validate(TrackSchema, track ?? {}, 'track');
-      const id = data.id || generateId();
+      // Use youtubeId as the track ID when adding from YouTube search so
+      // that recently-played tracking (which uses track.id) works consistently.
+      const id = data.id || data.youtubeId || data.youtube_id || generateId();
       return db.addTrack({
         id,
         title: data.title,
@@ -73,5 +75,12 @@ export function registerLibraryHandlers(): void {
       const validatedId = validate(IdSchema, id, 'track ID');
       db.incrementPlayCount(validatedId);
     } catch (err) { console.error('[library] incrementPlayCount failed:', err); }
+  });
+
+  ipcMain.handle('library:addRecentlyPlayed', (_event, id: unknown) => {
+    try {
+      const validatedId = validate(IdSchema, id, 'track ID');
+      db.addRecentlyPlayed(validatedId);
+    } catch (err) { console.error('[library] addRecentlyPlayed failed:', err); }
   });
 }

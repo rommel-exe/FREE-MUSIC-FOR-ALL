@@ -1,10 +1,17 @@
+/**
+ * playerStore (Zustand) — UI mirror of MediaEngine state.
+ *
+ * This store NEVER decides anything. It reflects MediaEngine state
+ * and forwards all actions to MediaEngine.
+ *
+ * The ONLY exception is `isFullPlayerOpen` which is pure UI state.
+ *
+ * @module store/playerStore
+ */
+
 import { create } from 'zustand';
 import type { Track } from '@/types';
-import { ipc } from '@/utils/ipc';
-import { queueEngine } from '@/engine/queueEngine';
-import { playbackController } from '@/engine/playbackController';
-import { prefetchEngine } from '@/engine/prefetchEngine';
-import { recommendationEngine } from '@/engine/recommendationEngine';
+import { mediaEngine } from '@/engine/mediaEngine';
 
 interface PlayerState {
   currentTrack: Track | null;
@@ -21,7 +28,13 @@ interface PlayerState {
   isMuted: boolean;
   isLoading: boolean;
   autoDedup: boolean;
+  lyricsOffset: number;
+  autoSyncEnabled: boolean;
+  autoSyncConfidence: number;
+  audioUrl: string | null;
+  audioVideoId: string | null;
 
+  // Actions (all delegate to MediaEngine)
   playTrack: (track: Track) => void;
   playTracks: (tracks: Track[], startIndex?: number) => void;
   playFromQueue: (index: number) => void;
@@ -40,258 +53,201 @@ interface PlayerState {
   removeFromQueue: (index: number) => void;
   reorderQueue: (fromIndex: number, toIndex: number) => void;
   clearQueue: () => void;
+  prefetchTracks: (tracks: Track[]) => void;
   setFullPlayerOpen: (open: boolean) => void;
   setProgress: (progress: number) => void;
   setDuration: (duration: number) => void;
   setLoading: (loading: boolean) => void;
   toggleAutoDedup: () => void;
+  adjustLyricsOffset: (delta: number) => void;
+  resetLyricsOffset: () => void;
+  setLyricsOffset: (offset: number) => void;
+  toggleAutoSync: () => void;
+  setAutoSyncConfidence: (confidence: number) => void;
   restoreSession: () => Promise<void>;
   saveSession: () => void;
 }
 
-// Debounced session save
-let sessionSaveTimeout: ReturnType<typeof setTimeout> | null = null;
-function debouncedSave(state: PlayerState) {
-  if (sessionSaveTimeout) clearTimeout(sessionSaveTimeout);
-  sessionSaveTimeout = setTimeout(() => {
-    ipc.settings.saveSession({
-      currentTrack: state.currentTrack,
-      wasPlaying: state.isPlaying,
-      volume: state.volume,
-      isShuffle: state.isShuffle,
-      repeatMode: state.repeatMode,
-      queue: state.queue,
-      queueIndex: state.queueIndex,
-      queueHistory: state.queueHistory,
-      autoDedup: state.autoDedup,
-    }).catch(() => {});
-  }, 1000);
+// Mirror MediaEngine state into Zustand - only update changed fields to prevent unnecessary re-renders
+function syncFromEngine(set: (partial: Partial<PlayerState>) => void, get: () => PlayerState) {
+  const s = mediaEngine.getState();
+  const current = get();
+  
+  // Only update fields that actually changed
+  const updates: Partial<PlayerState> = {};
+  
+  if (current.currentTrack?.id !== s.currentTrack?.id) updates.currentTrack = s.currentTrack;
+  if (current.isPlaying !== s.isPlaying) updates.isPlaying = s.isPlaying;
+  if (current.progress !== s.progress) updates.progress = s.progress;
+  if (current.duration !== s.duration) updates.duration = s.duration;
+  if (current.volume !== s.volume) updates.volume = s.volume;
+  if (current.isMuted !== s.isMuted) updates.isMuted = s.isMuted;
+  if (current.isLoading !== s.isLoading) updates.isLoading = s.isLoading;
+  if (current.queue.length !== s.queue.length || current.queue.some((t, i) => t.id !== s.queue[i]?.id)) {
+    updates.queue = s.queue;
+    updates.queueIndex = s.queueIndex;
+    updates.queueHistory = s.queueHistory;
+  }
+  if (current.isShuffle !== s.isShuffle) updates.isShuffle = s.isShuffle;
+  if (current.repeatMode !== s.repeatMode) updates.repeatMode = s.repeatMode;
+  if (current.autoDedup !== s.autoDedup) updates.autoDedup = s.autoDedup;
+  if (current.lyricsOffset !== s.lyricsOffset) updates.lyricsOffset = s.lyricsOffset;
+  if (current.autoSyncEnabled !== s.autoSyncEnabled) updates.autoSyncEnabled = s.autoSyncEnabled;
+  if (current.autoSyncConfidence !== s.autoSyncConfidence) updates.autoSyncConfidence = s.autoSyncConfidence;
+  if (current.audioUrl !== s.audioUrl) updates.audioUrl = s.audioUrl;
+  if (current.audioVideoId !== s.audioVideoId) updates.audioVideoId = s.audioVideoId;
+  
+  if (Object.keys(updates).length > 0) {
+    set(updates);
+  }
 }
 
-/** Sync engine state to the Zustand store. */
-function syncFromEngine(set: (partial: Partial<PlayerState>) => void) {
-  const qs = queueEngine.getState();
-  const ps = playbackController.getState();
-  set({
-    currentTrack: ps.currentTrack ?? qs.currentTrack,
-    queue: qs.queue as Track[],
-    queueIndex: qs.queueIndex,
-    queueHistory: qs.history as Track[],
-    isShuffle: qs.shuffle,
-    repeatMode: qs.repeatMode,
-    autoDedup: qs.autoDedup,
-    isPlaying: ps.isPlaying,
-    progress: ps.progress,
-    duration: ps.duration,
-    volume: ps.volume,
-    isMuted: ps.isMuted,
-    isLoading: ps.isLoading,
+export const usePlayerStore = create<PlayerState>((set, get) => {
+  // Subscribe to MediaEngine state changes
+  mediaEngine.subscribe(() => {
+    syncFromEngine(set, get);
   });
-}
 
-export const usePlayerStore = create<PlayerState>((set, get) => ({
-  currentTrack: null,
-  isPlaying: false,
-  progress: 0,
-  duration: 0,
-  volume: 0.8,
-  isShuffle: false,
-  repeatMode: 'off',
-  queue: [],
-  queueIndex: -1,
-  queueHistory: [],
-  isFullPlayerOpen: false,
-  isMuted: false,
-  isLoading: false,
-  autoDedup: true,
+  return {
+    // ── Initial state ──────────────────────────────────────────────
+    currentTrack: null,
+    isPlaying: false,
+    progress: 0,
+    duration: 0,
+    volume: 0.8,
+    isShuffle: false,
+    repeatMode: 'off',
+    queue: [],
+    queueIndex: -1,
+    queueHistory: [],
+    isFullPlayerOpen: false,
+    isMuted: false,
+    isLoading: false,
+    audioUrl: null,
+    audioVideoId: null,
+    autoDedup: true,
+    lyricsOffset: 0,
+    autoSyncEnabled: true,
+    autoSyncConfidence: 0,
 
-  playTrack: (track) => {
-    // Set a single-track queue so next/previous are coherent
-    queueEngine.setQueue([track], 0);
-    playbackController.play(track);
-    recommendationEngine.recordPlay(track);
-    syncFromEngine(set);
-    debouncedSave(get());
-  },
+    // ── Actions (all delegate to MediaEngine) ──────────────────────
 
-  playFromQueue: (index: number) => {
-    const track = queueEngine.jumpTo(index);
-    if (track) {
-      playbackController.play(track);
-      recommendationEngine.recordPlay(track);
-      const qs = queueEngine.getState();
-      prefetchEngine.prefetch(qs.queue, qs.queueIndex);
-    }
-    syncFromEngine(set);
-    debouncedSave(get());
-  },
+    playTrack: (track) => {
+      mediaEngine.playTrack(track);
+    },
 
-  playTracks: (tracks, startIndex = 0) => {
-    if (tracks.length === 0) return;
-    queueEngine.setQueue(tracks, startIndex);
-    const current = queueEngine.getCurrentTrack();
-    if (current) {
-      playbackController.play(current);
-      recommendationEngine.recordPlay(current);
-      prefetchEngine.prefetch(tracks, startIndex);
-    }
-    syncFromEngine(set);
-    debouncedSave(get());
-  },
+    playTracks: (tracks, startIndex = 0) => {
+      mediaEngine.playTracks(tracks, startIndex);
+    },
 
-  togglePlay: () => {
-    playbackController.togglePlay();
-    set({ isPlaying: playbackController.getState().isPlaying });
-    debouncedSave(get());
-  },
+    playFromQueue: (index) => {
+      mediaEngine.playFromQueue(index);
+    },
 
-  pause: () => {
-    playbackController.pause();
-    set({ isPlaying: false });
-    debouncedSave(get());
-  },
+    togglePlay: () => {
+      mediaEngine.togglePlay();
+    },
 
-  resume: () => {
-    playbackController.resume();
-    set({ isPlaying: true });
-    debouncedSave(get());
-  },
+    pause: () => {
+      mediaEngine.pause();
+    },
 
-  seek: (time) => {
-    playbackController.seek(time);
-    set({ progress: time });
-  },
+    resume: () => {
+      mediaEngine.resume();
+    },
 
-  setVolume: (volume) => {
-    playbackController.setVolume(volume);
-    syncFromEngine(set);
-    debouncedSave(get());
-  },
+    seek: (time) => {
+      mediaEngine.seek(time);
+    },
 
-  toggleMute: () => {
-    playbackController.toggleMute();
-    syncFromEngine(set);
-    debouncedSave(get());
-  },
+    setVolume: (volume) => {
+      mediaEngine.setVolume(volume);
+    },
 
-  toggleShuffle: () => {
-    const { isShuffle } = get();
-    queueEngine.shuffle(!isShuffle);
-    syncFromEngine(set);
-    debouncedSave(get());
-  },
+    toggleMute: () => {
+      mediaEngine.toggleMute();
+    },
 
-  cycleRepeat: () => {
-    const { repeatMode } = get();
-    const modes: ('off' | 'all' | 'one')[] = ['off', 'all', 'one'];
-    const nextMode = modes[(modes.indexOf(repeatMode) + 1) % 3];
-    queueEngine.setRepeatMode(nextMode);
-    syncFromEngine(set);
-    debouncedSave(get());
-  },
+    toggleShuffle: () => {
+      mediaEngine.toggleShuffle();
+    },
 
-  nextTrack: () => {
-    const next = queueEngine.next();
-    if (next) {
-      playbackController.play(next);
-      recommendationEngine.recordPlay(next);
-      const qs = queueEngine.getState();
-      prefetchEngine.prefetch(qs.queue, qs.queueIndex);
-    } else {
-      playbackController.pause();
-      // Clear current track from playback controller so the UI
-      // doesn't show a stale "loaded" track after the queue ends.
-      set({ currentTrack: null });
-    }
-    syncFromEngine(set);
-    debouncedSave(get());
-  },
+    cycleRepeat: () => {
+      mediaEngine.cycleRepeat();
+    },
 
-  previousTrack: () => {
-    const realProgress = playbackController.getState().progress;
-    const prev = queueEngine.previous(realProgress);
-    if (prev) {
-      playbackController.play(prev);
-    }
-    syncFromEngine(set);
-    debouncedSave(get());
-  },
+    nextTrack: () => {
+      mediaEngine.nextTrack();
+    },
 
-  addToQueue: (track) => {
-    queueEngine.add(track);
-    syncFromEngine(set);
-    debouncedSave(get());
-  },
+    previousTrack: () => {
+      mediaEngine.previousTrack();
+    },
 
-  playNext: (track) => {
-    queueEngine.playNext(track);
-    syncFromEngine(set);
-    debouncedSave(get());
-  },
+    addToQueue: (track) => {
+      mediaEngine.addToQueue(track);
+    },
 
-  removeFromQueue: (index) => {
-    queueEngine.remove(index);
-    syncFromEngine(set);
-    debouncedSave(get());
-  },
+    playNext: (track) => {
+      mediaEngine.playNextInQueue(track);
+    },
 
-  reorderQueue: (fromIndex, toIndex) => {
-    queueEngine.reorder(fromIndex, toIndex);
-    syncFromEngine(set);
-    debouncedSave(get());
-  },
+    removeFromQueue: (index) => {
+      mediaEngine.removeFromQueue(index);
+    },
 
-  clearQueue: () => {
-    queueEngine.clear();
-    syncFromEngine(set);
-    debouncedSave(get());
-  },
+    reorderQueue: (fromIndex, toIndex) => {
+      mediaEngine.reorderQueue(fromIndex, toIndex);
+    },
 
-  setFullPlayerOpen: (open) => set({ isFullPlayerOpen: open }),
+    clearQueue: () => {
+      mediaEngine.clearQueue();
+    },
 
-  setProgress: (progress) => {
-    // Throttle to ~0.1s to keep React re-renders manageable while still
-    // updating smoothly. The 0.5s throttle used previously caused the
-    // progress bar to appear stuck because the underlying `timeupdate`
-    // event fires every ~250ms, so most updates were being dropped.
-    const prev = get().progress;
-    if (Math.abs(progress - prev) < 0.1) return;
-    set({ progress });
-  },
+    prefetchTracks: (tracks) => {
+      mediaEngine.prefetchTracks(tracks);
+    },
 
-  setDuration: (duration) => set({ duration }),
-  setLoading: (loading) => set({ isLoading: loading }),
-  toggleAutoDedup: () => {
-    const { autoDedup } = get();
-    queueEngine.setAutoDedup(!autoDedup);
-    syncFromEngine(set);
-    debouncedSave(get());
-  },
+    setFullPlayerOpen: (open) => {
+      set({ isFullPlayerOpen: open });
+    },
 
-  restoreSession: async () => {
-    try {
-      const session = await ipc.settings.getSession();
-      if (session) {
-        // Restore engine state
-        queueEngine.setAutoDedup(session.autoDedup ?? true);
-        queueEngine.setRepeatMode(session.repeatMode ?? 'off');
-        if (session.queue?.length) {
-          queueEngine.setQueue(session.queue, session.queueIndex ?? 0);
-        }
-        playbackController.setVolume(session.volume ?? 0.8);
+    // These were called by the old AudioPlayer — now handled by MediaEngine.
+    // Keep as no-ops so UI code doesn't break.
+    setProgress: () => {},
+    setDuration: () => {},
+    setLoading: () => {},
 
-        syncFromEngine(set);
-        if (session.currentTrack && session.wasPlaying) {
-          playbackController.play(session.currentTrack);
-          syncFromEngine(set);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to restore session:', err);
-    }
-  },
+    toggleAutoDedup: () => {
+      mediaEngine.toggleAutoDedup();
+    },
 
-  saveSession: () => {
-    debouncedSave(get());
-  },
-}));
+    adjustLyricsOffset: (delta) => {
+      mediaEngine.adjustLyricsOffset(delta);
+    },
+
+    resetLyricsOffset: () => {
+      mediaEngine.resetLyricsOffset();
+    },
+
+    setLyricsOffset: (offset) => {
+      mediaEngine.setLyricsOffset(offset);
+    },
+
+    toggleAutoSync: () => {
+      mediaEngine.toggleAutoSync();
+    },
+
+    setAutoSyncConfidence: (confidence) => {
+      mediaEngine.setAutoSyncConfidence(confidence);
+    },
+
+    restoreSession: async () => {
+      await mediaEngine.restoreSession();
+    },
+
+    saveSession: () => {
+      // Session saving is handled internally by MediaEngine.
+    },
+  };
+});

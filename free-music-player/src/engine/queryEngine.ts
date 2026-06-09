@@ -4,9 +4,9 @@
  * Normalises queries, checks an in-memory TTL cache, calls the IPC YouTube
  * search bridge, and returns `Track[]` results.
  *
- * Ranking is delegated to the electron-side `rankSearchResults()` which has
- * full access to title + artist fields and content-type signals. The
- * results from IPC arrive pre-ranked — QueryEngine does NOT re-rank them.
+ * Ranking is done on the electron side using a multi-factor score (view counts,
+ * title relevance, artist match, trust signals). The results from IPC arrive
+ * pre-ranked — QueryEngine does NOT re-rank them.
  */
 
 import type { Track, SearchResult } from '@/types';
@@ -15,8 +15,14 @@ import { ipc } from '@/utils/ipc';
 /**
  * Minimum trust score threshold for search results.
  * Results below this score are discarded entirely.
+ *
+ * Note: ytmusic-api v5 returns artist names without " - Topic" suffix,
+ * so the Topic channel bonus (+100) rarely applies. Clean results
+ * score ~15 (duration + artist metadata) — threshold is set to match.
+ * Penalised results (live, remix, cover, etc.) score negative and are
+ * filtered out.
  */
-const TRUST_SCORE_THRESHOLD = 80;
+const TRUST_SCORE_THRESHOLD = 15;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -63,8 +69,8 @@ export class QueryEngine {
    * Search YouTube for tracks matching `query`.
    *
    * Results are cached for 55 minutes. Ranking is handled by the electron
-   * side (`rankSearchResults` which is artist-aware and applies content-type
-   * signals). Previous in-flight searches are aborted when a new search starts.
+   * side (multi-factor score: view counts, title relevance, artist match,
+   * trust signals). Previous in-flight searches are aborted when a new search starts.
    *
    * @param query  - Free-text search string.
    * @param limit  - Maximum number of results (default 10).
@@ -133,7 +139,7 @@ export class QueryEngine {
    * Execute the actual YouTube search and cache results.
    *
    * Uses a debounce wrapper so rapid successive calls only fire once.
-   * Ranking is delegated to the electron-side `rankSearchResults`.
+   * Ranking is handled on the electron side (multi-factor score).
    */
   private async executeSearch(query: string, limit: number): Promise<Track[]> {
     // Debounce: if a timer is already pending, wait for it
@@ -153,8 +159,9 @@ export class QueryEngine {
       // If we were aborted, return empty — the newer call will take over
       if (controller.signal.aborted) return [];
 
-      // Results from the IPC search have already passed the trust score engine
-      // (search.ts computeTrustScore + score >= 80 filter). Take the top `limit`
+      // Results from the IPC search have already been filtered by trust score
+      // and ranked by multi-factor score (views, relevance, artist match).
+      // Take the top `limit`
       // results and display them immediately.
       const ranked = results
         .map((r) => this.searchResultToTrack(r))
@@ -189,7 +196,7 @@ export class QueryEngine {
       artist: result.artist,
       album: '',
       duration: result.duration,
-      thumbnail: result.thumbnail,
+      thumbnail: result.thumbnail || `https://i.ytimg.com/vi/${result.id}/maxresdefault.jpg`,
       path: '',
       source: 'youtube',
       isFavorite: false,

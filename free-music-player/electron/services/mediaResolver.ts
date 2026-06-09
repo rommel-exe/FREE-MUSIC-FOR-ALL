@@ -23,9 +23,11 @@ import { net } from 'electron';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import type { MediaSource } from '../utils/types';
-import { getVerifiedTrack, setVerifiedTrack } from '../utils/database';
+import { getVerifiedTrack, setVerifiedTrack, getCachedStreamUrl, setCachedStreamUrl, getDownloadedFilePath } from '../utils/database';
 
 const execFileAsync = promisify(execFile);
 
@@ -41,10 +43,15 @@ interface CacheEntry {
   streamUrl: string;
 }
 
-/** Optional track metadata for auto-recovery fallback. */
+/** Optional track metadata for auto-recovery fallback and duration validation. */
 export interface TrackMetadata {
   artist: string;
   title: string;
+  /** Track database ID — used to check if a local download exists. */
+  trackId?: string;
+  /** Expected track duration in seconds — if provided, resolved videos must
+   *  match within tolerance (±5% or 5s, whichever is larger) or be rejected. */
+  expectedDuration?: number;
 }
 
 // ─── MediaResolver class ────────────────────────────────────────────────
@@ -52,6 +59,9 @@ export interface TrackMetadata {
 class MediaResolver {
   /** videoId → cached resolve result */
   private cache = new Map<string, CacheEntry>();
+
+  /** videoId → in-flight resolve promise (for deduplication) */
+  private pendingResolves = new Map<string, Promise<MediaSource | null>>();
 
   /** The Node.js HTTP server instance (started via `start()`). */
   private server: ReturnType<typeof createServer> | null = null;
@@ -117,27 +127,73 @@ class MediaResolver {
    * @returns        - A MediaSource or null if all attempts failed.
    */
   async resolve(videoId: string, metadata?: TrackMetadata): Promise<MediaSource | null> {
-    // Check in-memory cache first
+    // 0) Check for locally-downloaded file if trackId is available
+    if (metadata?.trackId) {
+      const localResult = this.resolveLocal(metadata.trackId, videoId);
+      if (localResult) return localResult;
+    }
+
+    // Check in-memory cache first (skip duration re-check — already passed validation)
     const cached = this.getCached(videoId);
     if (cached) return cached;
 
-    // 1) Try primary video
-    const primaryResult = await this.tryResolve(videoId);
+    // Deduplicate concurrent requests for the same videoId
+    const pending = this.pendingResolves.get(videoId);
+    if (pending) {
+      return pending;
+    }
+
+    const promise = this.resolveInternal(videoId, metadata);
+    this.pendingResolves.set(videoId, promise);
+
+    try {
+      return await promise;
+    } finally {
+      this.pendingResolves.delete(videoId);
+    }
+  }
+
+  private async resolveInternal(videoId: string, metadata?: TrackMetadata): Promise<MediaSource | null> {
+    // 1) Try primary video with duration validation
+    const primaryResult = await this.tryResolve(videoId, metadata);
     if (primaryResult) return primaryResult;
 
     console.log(`[MediaResolver] Primary resolve failed for ${videoId}, attempting auto-recovery...`);
 
-    // 2) Auto-recovery: search for official audio track
+    // 2) Auto-recovery: search for official audio track, prefer matching duration
     if (metadata?.artist && metadata?.title) {
-      const recoveryVideoId = await this.searchOfficialSong(metadata.artist, metadata.title);
+      const recoveryVideoId = await this.searchOfficialSong(
+        metadata.artist,
+        metadata.title,
+        metadata.expectedDuration,
+      );
       if (recoveryVideoId && recoveryVideoId !== videoId) {
         console.log(`[MediaResolver] Recovery: ${videoId} → ${recoveryVideoId}`);
-        const recoveryResult = await this.tryResolve(recoveryVideoId);
+        const recoveryResult = await this.tryResolve(recoveryVideoId, metadata);
         if (recoveryResult) return recoveryResult;
       }
     }
 
     return null;
+  }
+
+  /**
+   * Resolve a locally-downloaded audio file.
+   * Returns a MediaSource pointing at the local file via the proxy,
+   * or null if no local file exists.
+   */
+  private resolveLocal(trackId: string, videoId: string): MediaSource | null {
+    const filePath = getDownloadedFilePath(trackId);
+    if (!filePath || !fs.existsSync(filePath)) return null;
+
+    const source: MediaSource = {
+      audioUrl: `http://127.0.0.1:${this.port}/local/${trackId}`,
+      expiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000, // 1 year — local files don't expire
+      bitrate: 320,
+      videoId,
+    };
+
+    return source;
   }
 
   /**
@@ -188,11 +244,37 @@ class MediaResolver {
 
   /**
    * Handle an incoming HTTP request to the proxy server.
-   * Expects URLs of the form `/stream/<videoId>`.
+   * Supports:
+   *  - `/stream/<videoId>` — proxy from YouTube's CDN
+   *  - `/local/<trackId>` — serve a locally-downloaded file
    */
   private handleProxyRequest(req: IncomingMessage, res: ServerResponse): void {
     const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
-    const videoId = url.pathname.replace('/stream/', '');
+    const pathname = url.pathname;
+
+    // ── Local file serving ───────────────────────────────────────────
+    if (pathname.startsWith('/local/')) {
+      const trackId = pathname.replace('/local/', '');
+      if (!trackId) {
+        res.writeHead(400);
+        res.end('Missing track ID');
+        return;
+      }
+
+      const filePath = getDownloadedFilePath(trackId);
+      if (!filePath || !fs.existsSync(filePath)) {
+        console.error(`[MediaResolver] Local file not found for track: ${trackId}`);
+        res.writeHead(404);
+        res.end('Local file not found');
+        return;
+      }
+
+      this.serveLocalFile(filePath, req, res);
+      return;
+    }
+
+    // ── Stream proxy ─────────────────────────────────────────────────
+    const videoId = pathname.replace('/stream/', '');
 
     if (!videoId) {
       res.writeHead(400);
@@ -306,6 +388,57 @@ class MediaResolver {
     }
   }
 
+  /**
+   * Serve a local audio file over HTTP, supporting Range requests for seeking.
+   */
+  private serveLocalFile(filePath: string, req: IncomingMessage, res: ServerResponse): void {
+    const stat = fs.statSync(filePath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
+
+    // Determine MIME type from extension
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeTypes: Record<string, string> = {
+      '.m4a': 'audio/mp4',
+      '.mp3': 'audio/mpeg',
+      '.opus': 'audio/ogg',
+      '.ogg': 'audio/ogg',
+      '.wav': 'audio/wav',
+      '.webm': 'audio/webm',
+    };
+    const contentType = mimeTypes[ext] || 'audio/mp4';
+
+    if (range) {
+      // Parse Range header (e.g. "bytes=0-1000")
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunkSize = end - start + 1;
+
+      const stream = fs.createReadStream(filePath, { start, end });
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Content-Length': chunkSize,
+        'Content-Type': contentType,
+        'Accept-Ranges': 'bytes',
+        'access-control-allow-origin': '*',
+      });
+      stream.pipe(res);
+      req.on('close', () => stream.destroy());
+    } else {
+      // Full file
+      res.writeHead(200, {
+        'Content-Length': fileSize,
+        'Content-Type': contentType,
+        'Accept-Ranges': 'bytes',
+        'access-control-allow-origin': '*',
+      });
+      const stream = fs.createReadStream(filePath);
+      stream.pipe(res);
+      req.on('close', () => stream.destroy());
+    }
+  }
+
   // ── Private helpers ─────────────────────────────────────────────────
 
   /**
@@ -316,14 +449,30 @@ class MediaResolver {
    * 3. Validates: availability == public, !live, 30-900s duration, has audio formats.
    * 4. On success, caches in both in-memory (for fast proxy) and SQLite (for repeat).
    * 5. On failure, stores the failure in SQLite so we don't retry.
+   *
+   * @param metadata - Optional track metadata. If `expectedDuration` is set,
+   *   the resolved video's duration must match within tolerance.
    */
-  private async tryResolve(videoId: string): Promise<MediaSource | null> {
+  private async tryResolve(videoId: string, metadata?: TrackMetadata): Promise<MediaSource | null> {
     // Step 1: Check in-memory cache
     const inMemory = this.getCached(videoId);
     if (inMemory) return inMemory;
 
     try {
-      // Step 2: Check SQLite verification cache for recent (≤1h) verified entry
+      // Step 2: Check disk-persisted stream URL cache before running yt-dlp
+      const diskCachedUrl = getCachedStreamUrl(videoId);
+      if (diskCachedUrl) {
+        const source: MediaSource = {
+          audioUrl: `http://127.0.0.1:${this.port}/stream/${videoId}`,
+          expiresAt: Date.now() + CACHE_TTL_MS,
+          bitrate: 0,
+          videoId,
+        };
+        this.cache.set(videoId, { source, streamUrl: diskCachedUrl });
+        return source;
+      }
+
+      // Step 3: Check SQLite verification cache for recent (≤1h) verified entry
       const verified = getVerifiedTrack(videoId);
       const isRecentlyVerified =
         verified &&
@@ -332,14 +481,21 @@ class MediaResolver {
         Date.now() - new Date(verified.lastChecked).getTime() < 60 * 60 * 1000;
 
       if (isRecentlyVerified && verified.trustScore >= 80) {
-        // Still needs the stream URL — fetch it
-        return this.fetchAndCache(videoId);
+        // Still needs the stream URL — fetch it with single yt-dlp call
+        return this.fetchAndCacheVerified(videoId);
       }
 
-      // Step 3: Full verification run — yt-dlp -j + validation
+      // Step 4: Single yt-dlp call for BOTH validation AND stream URL
+      // Uses -j to get JSON with formats array containing URLs
       const { stdout } = await execFileAsync(
         YTDLP_PATH,
-        ['-j', '--no-warnings', `https://www.youtube.com/watch?v=${videoId}`],
+        [
+          '-j',
+          '-f',
+          'bestaudio[ext=m4a][abr>64]/bestaudio[abr>64]/bestaudio',
+          '--no-warnings',
+          `https://www.youtube.com/watch?v=${videoId}`,
+        ],
         { timeout: 15_000 },
       );
 
@@ -354,7 +510,6 @@ class MediaResolver {
       );
 
       if (availability !== 'public') {
-        // Store the failure in SQLite cache so we don't retry
         this.storeVerificationFailure(videoId, 'availability', availability);
         throw new Error(`Video ${videoId}: ${availability}`);
       }
@@ -369,9 +524,29 @@ class MediaResolver {
         throw new Error(`Video ${videoId}: duration ${duration}s out of range`);
       }
 
+      if (metadata?.expectedDuration && metadata.expectedDuration > 0) {
+        const tolerance = Math.max(5, metadata.expectedDuration * 0.05);
+        if (Math.abs(duration - metadata.expectedDuration) > tolerance) {
+          this.storeVerificationFailure(
+            videoId,
+            'duration_mismatch',
+            `expected ${metadata.expectedDuration}s, got ${duration}s (tolerance ${tolerance}s)`,
+          );
+          throw new Error(
+            `Video ${videoId}: duration mismatch — expected ${metadata.expectedDuration}s, got ${duration}s (tolerance ${tolerance.toFixed(1)}s)`,
+          );
+        }
+      }
+
       if (!hasAudio) {
         this.storeVerificationFailure(videoId, 'has_audio', 'false');
         throw new Error(`Video ${videoId}: no audio formats available`);
+      }
+
+      // Extract stream URL from the formats array (already filtered by -f)
+      const streamUrl = data.url || (data.formats?.[0]?.url);
+      if (!streamUrl) {
+        throw new Error(`Video ${videoId}: no stream URL in yt-dlp output`);
       }
 
       // Store successful verification
@@ -388,8 +563,16 @@ class MediaResolver {
         lastChecked: new Date().toISOString(),
       });
 
-      // Step 4: Fetch the actual stream URL with audio-only format selection
-      return this.fetchAndCache(videoId);
+      // Cache and return the source directly (no second yt-dlp call needed!)
+      const source: MediaSource = {
+        audioUrl: `http://127.0.0.1:${this.port}/stream/${videoId}`,
+        expiresAt: Date.now() + CACHE_TTL_MS,
+        bitrate: data.formats?.[0]?.abr || 0,
+        videoId,
+      };
+      this.cache.set(videoId, { source, streamUrl });
+      setCachedStreamUrl(videoId, streamUrl, CACHE_TTL_MS);
+      return source;
 
     } catch (err) {
       console.error(`[MediaResolver] Failed to resolve ${videoId}:`, err instanceof Error ? err.message : err);
@@ -398,20 +581,36 @@ class MediaResolver {
   }
 
   /**
-   * Fetch the stream URL with strict audio-only format selection and cache it.
+   * Fetch stream URL for a previously verified track (single yt-dlp call).
    */
-  private async fetchAndCache(videoId: string): Promise<MediaSource | null> {
+  private async fetchAndCacheVerified(videoId: string): Promise<MediaSource | null> {
     try {
-      const streamUrl = await this.fetchUpstreamUrl(videoId);
+      const { stdout } = await execFileAsync(
+        YTDLP_PATH,
+        [
+          '-j',
+          '-f',
+          'bestaudio[ext=m4a][abr>64]/bestaudio[abr>64]/bestaudio',
+          '--no-warnings',
+          `https://www.youtube.com/watch?v=${videoId}`,
+        ],
+        { timeout: 15_000 },
+      );
+
+      const data = JSON.parse(stdout);
+      const streamUrl = data.url || (data.formats?.[0]?.url);
+      if (!streamUrl) {
+        throw new Error(`Video ${videoId}: no stream URL in yt-dlp output`);
+      }
 
       const source: MediaSource = {
         audioUrl: `http://127.0.0.1:${this.port}/stream/${videoId}`,
         expiresAt: Date.now() + CACHE_TTL_MS,
-        bitrate: 0,
+        bitrate: data.formats?.[0]?.abr || 0,
         videoId,
       };
-
       this.cache.set(videoId, { source, streamUrl });
+      setCachedStreamUrl(videoId, streamUrl, CACHE_TTL_MS);
       return source;
     } catch (err) {
       console.error(`[MediaResolver] Failed to fetch stream URL for ${videoId}:`, err instanceof Error ? err.message : err);
@@ -442,25 +641,21 @@ class MediaResolver {
   }
 
   /**
-   * Run yt-dlp --get-url to obtain the raw streaming URL for `videoId`.
-   * Uses strict audio-only format selection with bitrate floor.
+   * Quick trust check for recovery results — avoids live/concert recordings.
    */
-  private async fetchUpstreamUrl(videoId: string): Promise<string> {
-    const { stdout } = await execFileAsync(
-      YTDLP_PATH,
-      [
-        '-f',
-        'bestaudio[ext=m4a][abr>64]/bestaudio[abr>64]/bestaudio',
-        '--get-url',
-        '--no-warnings',
-        `https://www.youtube.com/watch?v=${videoId}`,
-      ],
-      { timeout: 15_000 },
-    );
-
-    const url = stdout.trim().split('\n')[0];
-    if (!url) throw new Error('No URL returned by yt-dlp');
-    return url;
+  private isOfficialSong(title: string, channel: string): boolean {
+    const t = title.toLowerCase();
+    const c = channel.toLowerCase();
+    // Topic channel = gold standard
+    if (c.includes(' - topic')) return true;
+    // Blatant live/concert
+    if (/\b(live|concert)\b/i.test(t)) return false;
+    if (/\blive\s+(at|from|in|session|version|performance)\b/i.test(t)) return false;
+    // Artist name has live/concert (non-Topic channels)
+    if (/\b(live|concert)\b/i.test(c) && !c.includes(' - topic')) return false;
+    // Prefer official or audio keywords
+    if (/\bofficial\s+(audio|video|music)\b/i.test(t)) return true;
+    return false;
   }
 
   /**
@@ -468,13 +663,17 @@ class MediaResolver {
    *
    * Uses ytmusic-api (not yt-dlp) because it's much better at finding
    * the canonical song entry. Searches for "Artist Title" and returns
-   * the first Topic channel result, or failing that, the first song result.
+   * the result whose duration most closely matches the official track
+   * length, preferring official/Topic channel uploads.
    *
    * @param artist - Artist name from the track metadata.
    * @param title  - Song title from the track metadata.
+   * @param expectedDuration - Official track duration in seconds. When
+   *   provided, results are FIRST FILTERED by duration match (within tolerance),
+   *   then ranked by official-ness and duration closeness.
    * @returns      - A YouTube video ID, or null if no result found.
    */
-  private async searchOfficialSong(artist: string, title: string): Promise<string | null> {
+  private async searchOfficialSong(artist: string, title: string, expectedDuration?: number): Promise<string | null> {
     try {
       const mod = await import('ytmusic-api');
       const YTMusic = mod.default;
@@ -486,16 +685,70 @@ class MediaResolver {
 
       if (!results || results.length === 0) return null;
 
-      // Prefer Topic channel results
-      for (const r of results) {
+      // Helper: check if result duration roughly matches expected
+      const durationMatches = (r: any): boolean => {
+        if (!expectedDuration) return true;
+        const d = r.duration ?? 0;
+        if (!d || d <= 0) return false; // REJECT unknown durations when we have expectedDuration
+        const tolerance = Math.max(5, expectedDuration * 0.05);
+        return Math.abs(d - expectedDuration) <= tolerance;
+      };
+
+      // Rank results by how closely their duration matches the official length.
+      // Returns the closest match (smallest absolute difference).
+      const byDurationCloseness = (results: any[]): any[] => {
+        if (!expectedDuration) return results;
+        return [...results].sort((a, b) => {
+          const dA = a.duration ?? 0;
+          const dB = b.duration ?? 0;
+          // Both have duration (filtered above), sort by closeness
+          return Math.abs(dA - expectedDuration) - Math.abs(dB - expectedDuration);
+        });
+      };
+
+      // Pick the best result from a filtered list using duration closeness
+      const pickBest = (candidates: any[]): string | null => {
+        const sorted = byDurationCloseness(candidates);
+        return sorted.length > 0 ? sorted[0].videoId : null;
+      };
+
+      // FIRST: Filter by duration match (primary filter)
+      const durationMatched = results.filter(r => durationMatches(r));
+      
+      if (durationMatched.length === 0) {
+        console.log('[MediaResolver] No results match expected duration, falling back to all results');
+        // Fallback: if no duration matches, use all results but still rank by duration closeness
+        return pickBest(results);
+      }
+
+      // SECOND: Categorize duration-matched results by official-ness
+      const official: any[] = [];
+      const nonLive: any[] = [];
+
+      for (const r of durationMatched) {
         const channelName = r.artist?.name || '';
-        if (channelName.toLowerCase().includes(' - topic')) {
-          return r.videoId;
+        const songTitle = r.name || '';
+        const titleLower = (r.name || '').toLowerCase();
+        const isNonLive = !/\b(live|concert)\b/i.test(titleLower);
+
+        if (songTitle && this.isOfficialSong(songTitle, channelName)) {
+          official.push(r);
+        } else if (isNonLive) {
+          nonLive.push(r);
         }
       }
 
-      // Fallback: return first result
-      return results[0].videoId || null;
+      // Pass 1: Official song (Topic channel, not live) WITH matching duration
+      //          pick the one closest to the official length
+      const best = pickBest(official);
+      if (best) return best;
+
+      // Pass 2: Any non-live result with matching duration — pick closest
+      const bestNonLive = pickBest(nonLive);
+      if (bestNonLive) return bestNonLive;
+
+      // Pass 3: If no non-live, fall back to any duration-matched result
+      return pickBest(durationMatched);
     } catch (err) {
       console.error('[MediaResolver] Recovery search failed:', err instanceof Error ? err.message : err);
       return null;

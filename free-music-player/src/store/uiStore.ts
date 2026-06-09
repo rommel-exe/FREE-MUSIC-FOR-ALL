@@ -6,6 +6,8 @@ interface Toast {
   type: 'success' | 'error' | 'info';
 }
 
+export type LibraryTab = 'all' | 'liked' | 'downloaded';
+
 interface UIState {
   currentPage: string;
   theme: 'dark' | 'light';
@@ -18,6 +20,8 @@ interface UIState {
   isLyricsOpen: boolean;
   isFullPlayerOpen: boolean;
   selectedPlaylistId: string | null;
+  libraryTab: LibraryTab;
+  isPlaylistDrawerOpen: boolean;
 
   setPage: (page: string) => void;
   toggleTheme: () => void;
@@ -31,6 +35,9 @@ interface UIState {
   toggleLyrics: () => void;
   setFullPlayerOpen: (open: boolean) => void;
   setSelectedPlaylistId: (id: string | null) => void;
+  setLibraryTab: (tab: LibraryTab) => void;
+  togglePlaylistDrawer: () => void;
+  setPlaylistDrawerOpen: (open: boolean) => void;
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
@@ -45,6 +52,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   isLyricsOpen: false,
   isFullPlayerOpen: false,
   selectedPlaylistId: null,
+  libraryTab: 'all',
+  isPlaylistDrawerOpen: false,
 
   setPage: (page) => set({ currentPage: page }),
   toggleTheme: () => set((s) => ({ theme: s.theme === 'dark' ? 'light' : 'dark' })),
@@ -62,4 +71,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   toggleLyrics: () => set((s) => ({ isLyricsOpen: !s.isLyricsOpen })),
   setFullPlayerOpen: (open) => set({ isFullPlayerOpen: open }),
   setSelectedPlaylistId: (id) => set({ selectedPlaylistId: id }),
+  setLibraryTab: (tab) => set({ libraryTab: tab }),
+  togglePlaylistDrawer: () => set((s) => ({ isPlaylistDrawerOpen: !s.isPlaylistDrawerOpen })),
+  setPlaylistDrawerOpen: (open) => set({ isPlaylistDrawerOpen: open }),
 }));

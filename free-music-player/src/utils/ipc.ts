@@ -42,6 +42,8 @@ export const ipc = {
       (api?.library?.getRecentlyPlayed() as Promise<Track[]> | undefined) ?? Promise.resolve([]),
     incrementPlayCount: (id: string): Promise<void> =>
       api?.library?.incrementPlayCount(id) ?? Promise.resolve(),
+    addRecentlyPlayed: (id: string): Promise<void> =>
+      api?.library?.addRecentlyPlayed(id) ?? Promise.resolve(),
   },
 
   playlist: {
@@ -97,13 +99,16 @@ export const ipc = {
   },
 
   stream: {
-    resolve: (videoId: string, metadata?: { artist: string; title: string }): Promise<{ url?: string; expiresAt?: number; bitrate?: number; videoId?: string; error?: string }> =>
+    resolve: (videoId: string, metadata?: { artist: string; title: string; expectedDuration?: number; trackId?: string }): Promise<{ url?: string; expiresAt?: number; bitrate?: number; videoId?: string; error?: string }> =>
       (api?.stream?.resolve?.(videoId, metadata) as
         | Promise<{ url?: string; expiresAt?: number; bitrate?: number; videoId?: string; error?: string }>
         | undefined) ?? Promise.resolve({ error: 'No API' }),
     prefetch: (videoId: string): Promise<{ ok: boolean }> =>
       (api?.stream?.prefetch?.(videoId) as Promise<{ ok: boolean }> | undefined) ??
       Promise.resolve({ ok: false }),
+    prefetchBatch: (videoIds: string[]): Promise<Array<{ videoId: string; ok: boolean }>> =>
+      (api?.stream?.prefetchBatch?.(videoIds) as Promise<Array<{ videoId: string; ok: boolean }>> | undefined) ??
+      Promise.resolve([]),
     hasCached: (videoId: string): Promise<{ cached: boolean }> =>
       (api?.stream?.hasCached?.(videoId) as Promise<{ cached: boolean }> | undefined) ??
       Promise.resolve({ cached: false }),
@@ -111,6 +116,27 @@ export const ipc = {
       (api?.stream?.getCached?.(videoId) as
         | Promise<{ url?: string; expiresAt?: number; bitrate?: number; error?: string }>
         | undefined) ?? Promise.resolve({ error: 'No API' }),
+  },
+
+  download: {
+    track: (track: { id: string; youtubeId: string; title: string; artist: string; album?: string; duration: number; thumbnail?: string }): Promise<{ ok: boolean; filePath?: string; error?: string }> =>
+      (api?.download?.track?.(track) as Promise<any>) ?? Promise.resolve({ ok: false, error: 'No API' }),
+    cancel: (downloadId: number): Promise<{ ok: boolean }> =>
+      (api?.download?.cancel?.(downloadId) as Promise<any>) ?? Promise.resolve({ ok: false }),
+    cancelByTrackId: (trackId: string): Promise<{ ok: boolean }> =>
+      (api?.download?.cancelByTrackId?.(trackId) as Promise<any>) ?? Promise.resolve({ ok: false }),
+    delete: (trackId: string): Promise<{ ok: boolean; error?: string }> =>
+      (api?.download?.delete?.(trackId) as Promise<any>) ?? Promise.resolve({ ok: false }),
+    hasDownload: (trackId: string): Promise<{ downloaded: boolean }> =>
+      (api?.download?.hasDownload?.(trackId) as Promise<any>) ?? Promise.resolve({ downloaded: false }),
+    getPath: (trackId: string): Promise<{ filePath: string | null }> =>
+      (api?.download?.getPath?.(trackId) as Promise<any>) ?? Promise.resolve({ filePath: null }),
+    getAll: (): Promise<{ downloads: Array<any> }> =>
+      (api?.download?.getAll?.() as Promise<any>) ?? Promise.resolve({ downloads: [] }),
+    getForTrack: (trackId: string): Promise<{ downloads: Array<any> }> =>
+      (api?.download?.getForTrack?.(trackId) as Promise<any>) ?? Promise.resolve({ downloads: [] }),
+    onDownloadProgress: (fn: (data: { trackId: string; downloadId?: number; progress: number }) => void): (() => void) =>
+      api?.download?.onDownloadProgress?.(fn) ?? (() => {}),
   },
 
   import: {
@@ -138,11 +164,53 @@ export const ipc = {
         | undefined) ?? Promise.reject(new Error('No API')),
   },
 
+  alignment: {
+    /** Run the full alignment pipeline on a track. Returns generated LRC. */
+    align: (videoId: string, audioUrl: string, plainLyrics: string[]): Promise<{ lrc: string; confidence: number; fromCache: boolean; error?: string }> =>
+      (api?.alignment?.align(videoId, audioUrl, plainLyrics) as Promise<any>) ?? Promise.resolve({ lrc: '', confidence: 0, fromCache: false, error: 'No API' }),
+    /** Check if cached aligned lyrics exist. */
+    getCached: (videoId: string): Promise<{ lrc: string; confidence: number; cached: boolean }> =>
+      (api?.alignment?.getCached(videoId) as Promise<any>) ?? Promise.resolve({ lrc: '', confidence: 0, cached: false }),
+    /** Delete cached aligned lyrics. */
+    removeCached: (videoId: string): Promise<{ ok: boolean }> =>
+      (api?.alignment?.removeCached(videoId) as Promise<any>) ?? Promise.resolve({ ok: false }),
+    /** Get alignment engine status. */
+    getStatus: (): Promise<{ modelDownloaded: boolean; binaryFound: boolean; modelPath: string; binaryPath: string | null }> =>
+      (api?.alignment?.status() as Promise<any>) ?? Promise.resolve({ modelDownloaded: false, binaryFound: false, modelPath: '', binaryPath: null }),
+    /** Download the Whisper model with progress subscription. */
+    downloadModel: (): Promise<{ ok: boolean }> =>
+      (api?.alignment?.downloadModel() as Promise<any>) ?? Promise.resolve({ ok: false }),
+    /** Subscribe to model download progress. Returns unsubscribe function. */
+    onDownloadProgress: (fn: (pct: number) => void): (() => void) =>
+      api?.alignment?.onDownloadProgress(fn) ?? (() => {}),
+  },
+
   app: {
     minimize: (): void => api?.app?.minimize(),
     maximize: (): void => api?.app?.maximize(),
     close: (): void => api?.app?.close(),
     getVersion: (): Promise<string> =>
       (api?.app?.getVersion() as Promise<string> | undefined) ?? Promise.resolve('1.0.0'),
+  },
+
+  update: {
+    checkForUpdates: (): Promise<{ ok: boolean; reason?: string }> =>
+      (api?.update?.checkForUpdates() as Promise<any>) ?? Promise.resolve({ ok: false, reason: 'No API' }),
+    quitAndInstall: (): void => api?.update?.quitAndInstall(),
+    onUpdateStatus: (callback: (data: {
+      status: 'checking' | 'available' | 'not-available' | 'downloaded' | 'error';
+      version?: string;
+      releaseDate?: string;
+      releaseNotes?: string;
+      message?: string;
+    }) => void): (() => void) =>
+      api?.update?.onUpdateStatus(callback) ?? (() => {}),
+    onUpdateProgress: (callback: (data: {
+      percent: number;
+      bytesPerSecond: number;
+      transferred: number;
+      total: number;
+    }) => void): (() => void) =>
+      api?.update?.onUpdateProgress(callback) ?? (() => {}),
   },
 };

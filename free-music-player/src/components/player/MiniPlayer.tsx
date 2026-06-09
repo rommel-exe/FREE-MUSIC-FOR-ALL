@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { usePlayerStore } from '@/store/playerStore';
 
@@ -8,7 +9,7 @@ function formatTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-export function MiniPlayer() {
+export const MiniPlayer = memo(function MiniPlayer() {
   const {
     currentTrack,
     isPlaying,
@@ -36,7 +37,7 @@ export function MiniPlayer() {
   if (!currentTrack) return null;
 
   return (
-    <div className="fixed inset-0 bg-[#111] z-50 flex flex-col">
+    <div className="fixed inset-0 glass-content z-50 flex flex-col">
       {/* Track info */}
       <div className="flex-1 flex flex-col items-center justify-center px-8">
         <div className="w-48 h-48 rounded-xl bg-white/10 overflow-hidden shadow-2xl mb-6">
@@ -69,30 +70,31 @@ export function MiniPlayer() {
         </div>
 
         {/* Playback buttons */}
-        <div className="flex items-center justify-center gap-6">
-          <button onClick={previousTrack} className="p-2 text-white/70 hover:text-white transition-colors">
-            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+        <div className="flex items-center justify-center gap-3">
+          <button onClick={previousTrack} className="p-2.5 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center" aria-label="Previous track">
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
             </svg>
           </button>
 
           <button
             onClick={togglePlay}
-            className="w-14 h-14 rounded-full bg-white flex items-center justify-center hover:scale-105 transition-transform"
+            className="w-12 h-12 rounded-full bg-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-lg"
+            aria-label={isPlaying ? "Pause" : "Play"}
           >
             {isPlaying ? (
-              <svg className="w-6 h-6 text-black" fill="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 text-black" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
               </svg>
             ) : (
-              <svg className="w-6 h-6 text-black ml-1" fill="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 text-black ml-0.5" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M8 5v14l11-7z" />
               </svg>
             )}
           </button>
 
-          <button onClick={nextTrack} className="p-2 text-white/70 hover:text-white transition-colors">
-            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+          <button onClick={nextTrack} className="p-2.5 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center" aria-label="Next track">
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
             </svg>
           </button>
@@ -108,4 +110,4 @@ export function MiniPlayer() {
       </div>
     </div>
   );
-}
+});

@@ -41,6 +41,7 @@ interface LibraryState {
     total: number;
     failed: number;
   }>;
+  createPlaylist: (name: string, description?: string) => Promise<Playlist>;
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
@@ -162,5 +163,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     // Refresh tracks and playlists so UI updates immediately
     await Promise.all([get().loadTracks(), get().loadPlaylists()]);
     return result;
+  },
+
+  createPlaylist: async (name, description) => {
+    const playlist = await ipc.playlist.createPlaylist(name, description || '');
+    await get().loadPlaylists();
+    return playlist as Playlist;
   },
 }));

@@ -12,6 +12,10 @@ function ensureDir(dir: string): void {
 
 function mapTrack(row: any): any {
   if (!row) return row;
+  const youtubeId = row.youtube_id ?? row.youtubeId ?? '';
+  // Ensure every YouTube track has a thumbnail — construct from videoId if missing
+  const thumbnail = row.thumbnail
+    || (youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/maxresdefault.jpg` : '');
   return {
     id: row.id,
     title: row.title,
@@ -19,8 +23,8 @@ function mapTrack(row: any): any {
     album: row.album,
     duration: row.duration,
     path: row.path,
-    thumbnail: row.thumbnail,
-    youtubeId: row.youtube_id ?? row.youtubeId ?? '',
+    thumbnail,
+    youtubeId,
     source: row.source,
     isFavorite: row.isFavorite ?? false,
     playCount: row.play_count ?? row.playCount ?? 0,
@@ -129,6 +133,42 @@ export function initDatabase(): Database.Database {
     );
 
     CREATE INDEX IF NOT EXISTS idx_verified_playable ON verified_tracks(playable);
+
+    CREATE TABLE IF NOT EXISTS aligned_lyrics (
+      video_id    TEXT PRIMARY KEY,
+      lrc         TEXT NOT NULL,
+      confidence  REAL NOT NULL DEFAULT 0,
+      created_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+    );
+  `);
+
+  // ── Stream URL cache (persists resolved yt-dlp URLs across restarts) ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS stream_cache (
+      video_id    TEXT PRIMARY KEY,
+      stream_url  TEXT NOT NULL,
+      expires_at  INTEGER NOT NULL,
+      created_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS downloads (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      track_id      TEXT NOT NULL,
+      video_id      TEXT NOT NULL DEFAULT '',
+      title         TEXT NOT NULL DEFAULT '',
+      artist        TEXT NOT NULL DEFAULT '',
+      file_path     TEXT NOT NULL,
+      file_size     INTEGER NOT NULL DEFAULT 0,
+      status        TEXT NOT NULL DEFAULT 'downloading',
+      progress      REAL NOT NULL DEFAULT 0,
+      error         TEXT NOT NULL DEFAULT '',
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      completed_at  TEXT,
+      FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
+    CREATE INDEX IF NOT EXISTS idx_stream_cache_expires ON stream_cache(expires_at);
   `);
 
   // ── Migration: add play_count column if missing (added after v1.0) ────
@@ -441,4 +481,161 @@ export function setVerifiedTrack(data: VerifiedTrack): void {
 
 export function clearExpiredVerifiedTracks(maxAgeDays = 7): void {
   getDb().prepare(`DELETE FROM verified_tracks WHERE last_checked < datetime('now', '-' || ? || ' days')`).run(maxAgeDays);
+}
+
+// ─── Aligned Lyrics (Whisper-generated LRC cache) ──────────────────────
+
+export interface AlignedLyricsRow {
+  videoId: string;
+  lrc: string;
+  confidence: number;
+  createdAt: number;
+}
+
+/** Get cached aligned lyrics for a video ID. Returns null if not cached. */
+export function getAlignedLyrics(videoId: string): AlignedLyricsRow | null {
+  const row = getDb().prepare(
+    'SELECT * FROM aligned_lyrics WHERE video_id = ?'
+  ).get(videoId) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return {
+    videoId: row.video_id as string,
+    lrc: row.lrc as string,
+    confidence: row.confidence as number,
+    createdAt: row.created_at as number,
+  };
+}
+
+/** Store generated aligned lyrics in the cache. */
+export function setAlignedLyrics(
+  videoId: string,
+  lrc: string,
+  confidence: number,
+): void {
+  getDb().prepare(`
+    INSERT OR REPLACE INTO aligned_lyrics (video_id, lrc, confidence, created_at)
+    VALUES (?, ?, ?, strftime('%s', 'now'))
+  `).run(videoId, lrc, confidence);
+}
+
+/** Remove aligned lyrics cache entry for a video ID. */
+export function removeAlignedLyrics(videoId: string): boolean {
+  return getDb().prepare('DELETE FROM aligned_lyrics WHERE video_id = ?').run(videoId).changes > 0;
+}
+
+// ─── Stream URL Cache (disk-persisted yt-dlp resolve results) ──────────
+
+export interface StreamCacheEntry {
+  videoId: string;
+  streamUrl: string;
+  expiresAt: number;
+  createdAt: number;
+}
+
+/** Get a cached stream URL for a video ID, or null if not cached / expired. */
+export function getCachedStreamUrl(videoId: string): string | null {
+  const row = getDb().prepare(
+    'SELECT * FROM stream_cache WHERE video_id = ? AND expires_at > ?'
+  ).get(videoId, Date.now()) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return row.stream_url as string;
+}
+
+/** Store a resolved stream URL in the disk cache. */
+export function setCachedStreamUrl(videoId: string, streamUrl: string, ttlMs: number): void {
+  getDb().prepare(
+    `INSERT OR REPLACE INTO stream_cache (video_id, stream_url, expires_at, created_at)
+     VALUES (?, ?, ?, strftime('%s', 'now'))`
+  ).run(videoId, streamUrl, Date.now() + ttlMs);
+}
+
+/** Remove expired stream cache entries. */
+export function clearExpiredStreamCache(): void {
+  getDb().prepare('DELETE FROM stream_cache WHERE expires_at < ?').run(Date.now());
+}
+
+/** Clear the entire stream cache. */
+export function clearAllStreamCache(): void {
+  getDb().prepare('DELETE FROM stream_cache').run();
+}
+
+// ─── Downloads ──────────────────────────────────────────────────────────
+
+export interface DownloadRecord {
+  id: number;
+  trackId: string;
+  videoId: string;
+  title: string;
+  artist: string;
+  filePath: string;
+  fileSize: number;
+  status: 'downloading' | 'completed' | 'failed';
+  progress: number;
+  error: string;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+/** Create a new download record. Returns the auto-generated ID. */
+export function createDownload(record: Omit<DownloadRecord, 'id' | 'createdAt' | 'completedAt'>): number {
+  const result = getDb().prepare(
+    `INSERT INTO downloads (track_id, video_id, title, artist, file_path, file_size, status, progress, error)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(record.trackId, record.videoId, record.title, record.artist, record.filePath, record.fileSize, record.status, record.progress, record.error);
+  return result.lastInsertRowid as number;
+}
+
+/** Update download progress by ID. */
+export function updateDownloadProgress(id: number, progress: number): void {
+  getDb().prepare('UPDATE downloads SET progress = ? WHERE id = ?').run(progress, id);
+}
+
+/** Mark a download as completed. */
+export function completeDownload(id: number, fileSize: number): void {
+  getDb().prepare(
+    "UPDATE downloads SET status = 'completed', progress = 1.0, file_size = ?, completed_at = datetime('now') WHERE id = ?"
+  ).run(fileSize, id);
+}
+
+/** Mark a download as failed with an error message. */
+export function failDownload(id: number, error: string): void {
+  getDb().prepare(
+    "UPDATE downloads SET status = 'failed', error = ?, completed_at = datetime('now') WHERE id = ?"
+  ).run(error, id);
+}
+
+/** Get all download records for the current user. */
+export function getAllDownloads(): DownloadRecord[] {
+  return getDb().prepare('SELECT * FROM downloads ORDER BY created_at DESC').all() as DownloadRecord[];
+}
+
+/** Get downloads for a specific track ID. */
+export function getDownloadsForTrack(trackId: string): DownloadRecord[] {
+  return getDb().prepare('SELECT * FROM downloads WHERE track_id = ? ORDER BY created_at DESC').all(trackId) as DownloadRecord[];
+}
+
+/** Check if a track has a completed download. */
+export function hasCompletedDownload(trackId: string): boolean {
+  const row = getDb().prepare(
+    "SELECT 1 FROM downloads WHERE track_id = ? AND status = 'completed' LIMIT 1"
+  ).get(trackId);
+  return !!row;
+}
+
+/** Get the file path for a completed download by track ID, or null. */
+export function getDownloadedFilePath(trackId: string): string | null {
+  const row = getDb().prepare(
+    "SELECT file_path FROM downloads WHERE track_id = ? AND status = 'completed' ORDER BY completed_at DESC LIMIT 1"
+  ).get(trackId) as { file_path: string } | undefined;
+  return row?.file_path ?? null;
+}
+
+/** Delete a download record (does not delete the file). */
+export function deleteDownloadRecord(id: number): boolean {
+  return getDb().prepare('DELETE FROM downloads WHERE id = ?').run(id).changes > 0;
+}
+
+/** Delete all downloads for a track (does not delete files). */
+export function deleteDownloadsForTrack(trackId: string): void {
+  getDb().prepare('DELETE FROM downloads WHERE track_id = ?').run(trackId);
 }

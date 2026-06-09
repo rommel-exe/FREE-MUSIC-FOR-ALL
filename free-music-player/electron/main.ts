@@ -4,6 +4,10 @@ import * as path from 'node:path';
 // Bypass autoplay restrictions for audio streaming
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('disable-features', 'BlockInsecurePrivateNetworkRequests');
+if (!app.isPackaged) {
+  app.commandLine.appendSwitch('remote-debugging-port', '9222');
+  app.commandLine.appendSwitch('remote-allow-origins', '*');
+}
 import { initDatabase } from './utils/database';
 import { registerPlayerHandlers } from './ipc/player';
 import { registerLibraryHandlers } from './ipc/library';
@@ -13,6 +17,8 @@ import { registerSearchHandlers } from './ipc/search';
 import { registerSettingsHandlers } from './ipc/settings';
 import { registerStreamHandlers } from './ipc/stream';
 import { registerImportHandlers } from './ipc/import';
+import { registerAlignmentHandlers } from './ipc/alignment';
+import { registerDownloadHandlers } from './ipc/download';
 import { mediaResolver } from './services/mediaResolver';
 
 // ─── Prevent multiple instances ─────────────────────────────────────────
@@ -40,10 +46,156 @@ function getPreloadPath(): string {
 }
 
 function getRendererUrl(): string {
-  if (isDev()) {
-    return 'http://localhost:5173';
+  // In production or when dist folder exists, use file:// protocol
+  const distPath = path.join(__dirname, '../dist/index.html');
+  if (!isDev() || require('fs').existsSync(distPath)) {
+    return `file://${distPath}`;
   }
-  return `file://${path.join(__dirname, '../dist/index.html')}`;
+  return 'http://localhost:5173';
+}
+
+// ─── Auto-updater ──────────────────────────────────────────────────────
+
+let _checkInProgress = false;
+
+/**
+ * Lazily import electron-updater. It crashes in dev mode (unpackaged)
+ * because autoUpdater expects a packaged app with update manifests.
+ */
+async function getAutoUpdater() {
+  if (!app.isPackaged) return null;
+  try {
+    const { autoUpdater } = await import('electron-updater');
+    autoUpdater.autoDownload = false; // Download on user confirmation
+    autoUpdater.allowPrerelease = false;
+    return autoUpdater;
+  } catch {
+    return null;
+  }
+}
+
+function sendToRenderer(channel: string, ...args: unknown[]) {
+  mainWindow?.webContents.send(channel, ...args);
+}
+
+function registerUpdateHandlers(): void {
+  // ── Renderer requests a check ──────────────────────────────────
+  ipcMain.handle('update:check', async () => {
+    if (_checkInProgress) return { ok: false, reason: 'already-checking' };
+    const updater = await getAutoUpdater();
+    if (!updater) {
+      sendToRenderer('update:status', { status: 'not-available', reason: 'dev-mode' });
+      return { ok: false, reason: 'dev-mode' };
+    }
+
+    _checkInProgress = true;
+    sendToRenderer('update:status', { status: 'checking' });
+
+    try {
+      const result = await updater.checkForUpdates();
+      if (result && result.updateInfo && result.updateInfo.version !== app.getVersion()) {
+        // Update is available — download it
+        sendToRenderer('update:status', {
+          status: 'available',
+          version: result.updateInfo.version,
+          releaseDate: result.updateInfo.releaseDate,
+          releaseNotes: result.updateInfo.releaseNotes,
+        });
+
+        // Start downloading
+        updater.downloadUpdate(result.cancellationToken);
+      } else {
+        sendToRenderer('update:status', { status: 'not-available' });
+      }
+    } catch (err: any) {
+      sendToRenderer('update:status', {
+        status: 'error',
+        message: err?.message ?? 'Update check failed',
+      });
+    } finally {
+      _checkInProgress = false;
+    }
+    return { ok: true };
+  });
+
+  // ── Renderer requests to quit & install ────────────────────────
+  ipcMain.on('update:quitAndInstall', async () => {
+    const updater = await getAutoUpdater();
+    if (updater) {
+      setImmediate(() => updater.quitAndInstall());
+    }
+  });
+}
+
+/**
+ * Start listening to autoUpdater events after we know the updater exists.
+ */
+async function setupAutoUpdaterEvents(): Promise<void> {
+  const updater = await getAutoUpdater();
+  if (!updater) return;
+
+  updater.on('checking-for-update', () => {
+    sendToRenderer('update:status', { status: 'checking' });
+  });
+
+  updater.on('update-available', (info) => {
+    sendToRenderer('update:status', {
+      status: 'available',
+      version: info.version,
+      releaseDate: info.releaseDate,
+      releaseNotes: info.releaseNotes,
+    });
+  });
+
+  updater.on('update-not-available', () => {
+    sendToRenderer('update:status', { status: 'not-available' });
+  });
+
+  updater.on('download-progress', (progress) => {
+    sendToRenderer('update:progress', {
+      percent: progress.percent ?? 0,
+      bytesPerSecond: progress.bytesPerSecond,
+      transferred: progress.transferred,
+      total: progress.total,
+    });
+  });
+
+  updater.on('update-downloaded', (info) => {
+    sendToRenderer('update:status', {
+      status: 'downloaded',
+      version: info.version,
+      releaseDate: info.releaseDate,
+      releaseNotes: info.releaseNotes,
+    });
+  });
+
+  updater.on('error', (err) => {
+    sendToRenderer('update:status', {
+      status: 'error',
+      message: err?.message ?? 'Unknown update error',
+    });
+  });
+}
+
+/**
+ * Silently check for updates on boot (only in production).
+ */
+async function checkForUpdatesOnBoot(): Promise<void> {
+  const updater = await getAutoUpdater();
+  if (!updater) return;
+
+  // Wait a few seconds so the app can settle before network calls
+  setTimeout(async () => {
+    try {
+      const result = await updater.checkForUpdates();
+      if (result?.updateInfo?.version && result.updateInfo.version !== app.getVersion()) {
+        // Auto-download in background
+        updater.downloadUpdate(result.cancellationToken);
+      }
+    } catch {
+      // Silent — don't bother the user on boot
+    }
+  }, 5000);
 }
 
 // ─── Window creation ────────────────────────────────────────────────────
@@ -54,10 +206,11 @@ function createMainWindow(): BrowserWindow {
     height: WINDOW_HEIGHT,
     minWidth: MIN_WIDTH,
     minHeight: MIN_HEIGHT,
-    backgroundColor: '#0a0a0a',
+    backgroundColor: '#00000000',
     frame: false,
-    titleBarStyle: 'hidden',
-    trafficLightPosition: { x: 12, y: 8 },
+    vibrancy: 'fullscreen-ui',
+    visualEffectState: 'active',
+    titleBarStyle: 'hiddenInset',
     webPreferences: {
       preload: getPreloadPath(),
       contextIsolation: true,
@@ -73,6 +226,14 @@ function createMainWindow(): BrowserWindow {
   });
 
   mainWindow.loadURL(getRendererUrl());
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error('[MainWindow] Failed to load:', errorCode, errorDescription, validatedURL);
+  });
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    console.log('[MainWindow] Finished loading');
+  });
 
   // DevTools can be opened manually with Cmd+Shift+I
 
@@ -118,7 +279,10 @@ app.whenReady().then(async () => {
   registerSettingsHandlers();
   registerStreamHandlers();
   registerImportHandlers();
+  registerAlignmentHandlers();
+  registerDownloadHandlers();
   registerWindowControls();
+  registerUpdateHandlers();
 
   // Global media key shortcuts
   globalShortcut.register('MediaPlayPause', () => {
@@ -135,6 +299,12 @@ app.whenReady().then(async () => {
   });
 
   createMainWindow();
+
+  // Wire auto-updater events BEFORE checking (so we don't miss them)
+  await setupAutoUpdaterEvents();
+
+  // Silent background check on boot
+  await checkForUpdatesOnBoot();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

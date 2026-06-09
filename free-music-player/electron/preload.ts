@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getFavorites: () => invoke('library:getFavorites'),
     getRecentlyPlayed: () => invoke('library:getRecentlyPlayed'),
     incrementPlayCount: (id: string) => invoke('library:incrementPlayCount', id),
+    addRecentlyPlayed: (id: string) => invoke('library:addRecentlyPlayed', id),
   },
 
   playlist: {
@@ -78,12 +79,45 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   stream: {
-    resolve: (videoId: string, metadata?: { artist: string; title: string }): Promise<{ url?: string; expiresAt?: number; bitrate?: number; videoId?: string; error?: string }> =>
+    resolve: (videoId: string, metadata?: { artist: string; title: string; expectedDuration?: number; trackId?: string }): Promise<{ url?: string; expiresAt?: number; bitrate?: number; videoId?: string; error?: string }> =>
       invoke('stream:resolve', videoId, metadata),
     prefetch: (videoId: string): Promise<{ ok: boolean }> => invoke('stream:prefetch', videoId),
+    prefetchBatch: (videoIds: string[]): Promise<Array<{ videoId: string; ok: boolean }>> => invoke('stream:prefetchBatch', videoIds),
     hasCached: (videoId: string): Promise<{ cached: boolean }> => invoke('stream:hasCached', videoId),
     getCached: (videoId: string): Promise<{ url?: string; expiresAt?: number; bitrate?: number; videoId?: string; error?: string }> =>
       invoke('stream:getCached', videoId),
+  },
+
+  download: {
+    track: (track: {
+      id: string;
+      youtubeId: string;
+      title: string;
+      artist: string;
+      album?: string;
+      duration: number;
+      thumbnail?: string;
+    }): Promise<{ ok: boolean; filePath?: string; error?: string }> =>
+      invoke('download:track', track),
+    cancel: (downloadId: number): Promise<{ ok: boolean }> =>
+      invoke('download:cancel', downloadId),
+    cancelByTrackId: (trackId: string): Promise<{ ok: boolean }> =>
+      invoke('download:cancelByTrackId', trackId),
+    delete: (trackId: string): Promise<{ ok: boolean; error?: string }> =>
+      invoke('download:delete', trackId),
+    hasDownload: (trackId: string): Promise<{ downloaded: boolean }> =>
+      invoke('download:hasDownload', trackId),
+    getPath: (trackId: string): Promise<{ filePath: string | null }> =>
+      invoke('download:getPath', trackId),
+    getAll: (): Promise<{ downloads: Array<{ id: number; trackId: string; videoId: string; title: string; artist: string; filePath: string; fileSize: number; status: string; progress: number; error: string; createdAt: string; completedAt: string | null }> }> =>
+      invoke('download:getAll'),
+    getForTrack: (trackId: string): Promise<{ downloads: any[] }> =>
+      invoke('download:getForTrack', trackId),
+    onDownloadProgress: (callback: (data: { trackId: string; downloadId?: number; progress: number }) => void) => {
+      const wrapper = (_event: unknown, data: { trackId: string; downloadId?: number; progress: number }) => callback(data);
+      ipcRenderer.on('download:progress', wrapper);
+      return () => { ipcRenderer.removeListener('download:progress', wrapper); };
+    },
   },
 
   import: {
@@ -99,10 +133,61 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }> => invoke('import:asPlaylist', url, playlistName),
   },
 
+  alignment: {
+    /** Run alignment on a track. Returns generated LRC or error. */
+    align: (videoId: string, audioUrl: string, plainLyrics: string[]): Promise<{ lrc: string; confidence: number; fromCache: boolean; error?: string }> =>
+      invoke('alignment:align', videoId, audioUrl, plainLyrics),
+    /** Check if cached aligned lyrics exist for a video ID. */
+    getCached: (videoId: string): Promise<{ lrc: string; confidence: number; cached: boolean }> =>
+      invoke('alignment:getCached', videoId),
+    /** Delete cached aligned lyrics. */
+    removeCached: (videoId: string): Promise<{ ok: boolean }> =>
+      invoke('alignment:removeCached', videoId),
+    /** Get engine status (model/binary availability). */
+    status: (): Promise<{ modelDownloaded: boolean; binaryFound: boolean; modelPath: string; binaryPath: string | null }> =>
+      invoke('alignment:status'),
+    /** Download the Whisper Base model (with progress events). */
+    downloadModel: (): Promise<{ ok: boolean }> =>
+      invoke('alignment:downloadModel'),
+    /** Listen for model download progress (0–100). */
+    onDownloadProgress: (callback: (pct: number) => void) => {
+      const wrapper = (_event: unknown, pct: number) => callback(pct);
+      ipcRenderer.on('alignment:downloadProgress', wrapper);
+      return () => { ipcRenderer.removeListener('alignment:downloadProgress', wrapper); };
+    },
+  },
+
   app: {
     minimize: () => send('app:minimize'),
     maximize: () => send('app:maximize'),
     close: () => send('app:close'),
     getVersion: (): Promise<string> => invoke('app:getVersion'),
+  },
+
+  update: {
+    checkForUpdates: (): Promise<{ ok: boolean; reason?: string }> =>
+      invoke('update:check'),
+    quitAndInstall: (): void => send('update:quitAndInstall'),
+    onUpdateStatus: (callback: (data: {
+      status: 'checking' | 'available' | 'not-available' | 'downloaded' | 'error';
+      version?: string;
+      releaseDate?: string;
+      releaseNotes?: string;
+      message?: string;
+    }) => void) => {
+      const wrapper = (_event: unknown, data: any) => callback(data);
+      ipcRenderer.on('update:status', wrapper);
+      return () => { ipcRenderer.removeListener('update:status', wrapper); };
+    },
+    onUpdateProgress: (callback: (data: {
+      percent: number;
+      bytesPerSecond: number;
+      transferred: number;
+      total: number;
+    }) => void) => {
+      const wrapper = (_event: unknown, data: any) => callback(data);
+      ipcRenderer.on('update:progress', wrapper);
+      return () => { ipcRenderer.removeListener('update:progress', wrapper); };
+    },
   },
 });

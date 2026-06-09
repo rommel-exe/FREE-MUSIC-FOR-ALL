@@ -1,5 +1,6 @@
 /**
- * PrefetchEngine — Pre-resolves MediaSources for upcoming tracks.
+ * PrefetchEngine — Pre-resolves MediaSources for upcoming tracks
+ * with adaptive, progress-triggered prefetching.
  *
  * Delegates to the `mediaResolver` service (which talks to the electron
  * MediaResolver through IPC). Maintains a local cache of resolved
@@ -9,6 +10,26 @@
 
 import type { Track, MediaSource } from '@/types';
 import { mediaResolver } from '@/services/mediaResolver';
+import { ipc } from '@/utils/ipc';
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Maximum concurrent prefetch requests. */
+const MAX_CONCURRENT = 4;
+
+/** Default number of upcoming tracks to prefetch on track change. */
+const DEFAULT_PREFETCH_COUNT = 5;
+
+/**
+ * When the current track's remaining time (in seconds) drops below this
+ * threshold, an additional burst of prefetches is triggered.
+ */
+const NEAR_END_THRESHOLD_SEC = 45;
+
+/** How many additional tracks to burst-fetch when near the end. */
+const NEAR_END_BURST_COUNT = 3;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -26,14 +47,20 @@ interface PrefetchEntry {
 // ---------------------------------------------------------------------------
 
 export class PrefetchEngine {
-  /** videoId → PrefetchEntry */
+  /** videoId -> PrefetchEntry */
   private cache = new Map<string, PrefetchEntry>();
 
   /** Number of prefetches currently in flight. */
   private inFlight = 0;
 
   /** Maximum concurrent prefetch requests. */
-  private readonly maxConcurrent = 2;
+  private readonly maxConcurrent = MAX_CONCURRENT;
+
+  /** Set of videoIds that have already triggered the near-end burst. */
+  private nearEndTriggered = new Set<string>();
+
+  /** The videoId of the most-recently-tracked "current track" for dedup. */
+  private lastTrackVideoId: string | null = null;
 
   // -----------------------------------------------------------------------
   // Public API
@@ -42,23 +69,106 @@ export class PrefetchEngine {
   /**
    * Prefetch MediaSources for upcoming tracks.
    *
-   * Starting from `currentIndex + 1`, up to `count` tracks (default 2)
-   * will have their MediaSources resolved in advance. Already-cached
-   * entries are skipped and concurrency is capped at 2.
+   * Starting from `currentIndex + 1`, up to `count` tracks will have their
+   * MediaSources resolved in advance. Already-cached entries are skipped
+   * and concurrency is capped at `maxConcurrent`.
    *
    * @param tracks       - Ordered list of tracks (e.g. the current queue).
    * @param currentIndex - Index of the currently playing track.
-   * @param count        - How many upcoming tracks to prefetch (default 2).
+   * @param count        - How many upcoming tracks to prefetch (default 5).
    */
-  prefetch(tracks: Track[], currentIndex: number, count = 2): void {
+  prefetch(tracks: Track[], currentIndex: number, count = DEFAULT_PREFETCH_COUNT): void {
     const start = currentIndex + 1;
     const end = Math.min(start + count, tracks.length);
 
+    // Collect videoIds that need prefetching
+    const videoIds: string[] = [];
     for (let i = start; i < end; i++) {
       const track = tracks[i];
       if (!track?.youtubeId) continue;
+      if (!this.cache.has(track.youtubeId)) {
+        videoIds.push(track.youtubeId);
+      }
+    }
 
-      this.enqueue(track.youtubeId);
+    // Use batch prefetch for multiple tracks (single IPC round-trip)
+    if (videoIds.length > 1) {
+      this.prefetchBatch(videoIds);
+    } else if (videoIds.length === 1) {
+      this.enqueue(videoIds[0]);
+    }
+  }
+
+  /**
+   * Batch prefetch multiple videoIds via single IPC call.
+   * Runs on main process in parallel, avoiding N IPC round-trips.
+   */
+  private async prefetchBatch(videoIds: string[]): Promise<void> {
+    try {
+      const results = await ipc.stream.prefetchBatch(videoIds);
+      for (const { videoId, ok } of results) {
+        if (ok) {
+          // Mark as resolved in local cache (actual source will be fetched on demand)
+          const entry = this.cache.get(videoId);
+          if (entry) {
+            entry.resolved = true;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[PrefetchEngine] batch prefetch failed:', err);
+      // Fallback to individual prefetch
+      for (const videoId of videoIds) {
+        this.enqueue(videoId);
+      }
+    }
+  }
+
+  /**
+   * Adaptive prefetch triggered by playback progress.
+   *
+   * Call this on every progress tick (e.g. from the 100ms progress poller).
+   * When the current track is within ~45s of finishing, an extra burst of
+   * prefetches fires to ensure upcoming tracks are resolved well in advance.
+   *
+   * This is a no-op the rest of the time, so it's safe to call frequently.
+   *
+   * @param tracks        - Ordered list of tracks (the current queue).
+   * @param currentIndex  - Index of the currently playing track.
+   * @param currentTime   - Current playback position in seconds.
+   * @param duration      - Total duration of the current track in seconds.
+   */
+  prefetchOnProgress(
+    tracks: Track[],
+    currentIndex: number,
+    currentTime: number,
+    duration: number,
+  ): void {
+    const currentTrack = tracks[currentIndex];
+    if (!currentTrack?.youtubeId) return;
+
+    // Track if a new track started playing since the last call
+    if (currentTrack.youtubeId !== this.lastTrackVideoId) {
+      this.nearEndTriggered.clear();
+      this.lastTrackVideoId = currentTrack.youtubeId;
+      // Fire an immediate prefetch for the next batch on track change
+      this.prefetch(tracks, currentIndex, DEFAULT_PREFETCH_COUNT);
+      return;
+    }
+
+    // Only act when duration is known and we're near the end
+    if (duration <= 0 || currentTime <= 0) return;
+
+    const remaining = duration - currentTime;
+
+    // Has the near-end burst already fired for this track?
+    if (this.nearEndTriggered.has(currentTrack.youtubeId)) return;
+
+    if (remaining <= NEAR_END_THRESHOLD_SEC) {
+      this.nearEndTriggered.add(currentTrack.youtubeId);
+      // Burst-prefetch additional tracks ahead
+      const additionalStart = currentIndex + 1 + DEFAULT_PREFETCH_COUNT;
+      this.prefetch(tracks, additionalStart - 1, NEAR_END_BURST_COUNT);
     }
   }
 
@@ -75,11 +185,28 @@ export class PrefetchEngine {
   }
 
   /**
+   * Manually store a resolved source (used after a successful resolve
+   * so the next play of the same track skips IPC entirely).
+   */
+  setSource(videoId: string, source: MediaSource): void {
+    this.cache.set(videoId, { source, resolved: true });
+  }
+
+  /**
+   * Check if a videoId already has a cached entry (resolved or pending).
+   */
+  has(videoId: string): boolean {
+    return this.cache.has(videoId);
+  }
+
+  /**
    * Clear all prefetched sources and reset state.
    */
   clear(): void {
     this.cache.clear();
     this.inFlight = 0;
+    this.nearEndTriggered.clear();
+    this.lastTrackVideoId = null;
   }
 
   /**
@@ -98,10 +225,7 @@ export class PrefetchEngine {
    * Skips if already cached or at concurrency limit.
    */
   private enqueue(videoId: string): void {
-    // Already cached (pending or resolved)
     if (this.cache.has(videoId)) return;
-
-    // At concurrency limit — skip silently
     if (this.inFlight >= this.maxConcurrent) return;
 
     const entry: PrefetchEntry = {

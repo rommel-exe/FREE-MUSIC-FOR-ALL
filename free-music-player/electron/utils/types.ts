@@ -71,6 +71,8 @@ export interface SearchResult {
   duration: number;
   thumbnail: string;
   url: string;
+  /** View count from YouTube (used for popularity-based ranking) */
+  viewCount?: number;
 }
 
 /** ── Media Source ───────────────────────────────────────────────────── */
