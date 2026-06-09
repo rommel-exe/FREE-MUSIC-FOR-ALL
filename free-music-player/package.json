@@ -1,6 +1,6 @@
 {
   "name": "free-music-player",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Free music player with YouTube streaming",
   "main": "dist-electron/main.js",
   "scripts": {
