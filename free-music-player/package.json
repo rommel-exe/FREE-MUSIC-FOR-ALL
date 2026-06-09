@@ -2,6 +2,12 @@
   "name": "free-music-player",
   "version": "1.0.1",
   "description": "Free music player with YouTube streaming",
+  "homepage": "https://github.com/rommel-exe/FREE-MUSIC-FOR-ALL",
+  "author": {
+    "name": "rommel-exe",
+    "email": "rommel-exe@users.noreply.github.com"
+  },
+  "license": "MIT",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
