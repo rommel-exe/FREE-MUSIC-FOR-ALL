@@ -525,15 +525,15 @@ class MediaResolver {
       }
 
       if (metadata?.expectedDuration && metadata.expectedDuration > 0) {
-        const tolerance = Math.max(5, metadata.expectedDuration * 0.05);
+        const tolerance = 1; // ±1 second — STRICT: only accept exact matches
         if (Math.abs(duration - metadata.expectedDuration) > tolerance) {
           this.storeVerificationFailure(
             videoId,
             'duration_mismatch',
-            `expected ${metadata.expectedDuration}s, got ${duration}s (tolerance ${tolerance}s)`,
+            `expected ${metadata.expectedDuration}s, got ${duration}s`,
           );
           throw new Error(
-            `Video ${videoId}: duration mismatch — expected ${metadata.expectedDuration}s, got ${duration}s (tolerance ${tolerance.toFixed(1)}s)`,
+            `Video ${videoId}: duration mismatch — expected ${metadata.expectedDuration}s, got ${duration}s`,
           );
         }
       }
@@ -666,10 +666,13 @@ class MediaResolver {
    * the result whose duration most closely matches the official track
    * length, preferring official/Topic channel uploads.
    *
+   * Duration matching is STRICT (±1 second) — only exact-length tracks
+   * are considered to avoid playing wrong versions.
+   *
    * @param artist - Artist name from the track metadata.
    * @param title  - Song title from the track metadata.
    * @param expectedDuration - Official track duration in seconds. When
-   *   provided, results are FIRST FILTERED by duration match (within tolerance),
+   *   provided, results are FIRST FILTERED by duration match (±1s strict),
    *   then ranked by official-ness and duration closeness.
    * @returns      - A YouTube video ID, or null if no result found.
    */
@@ -685,12 +688,12 @@ class MediaResolver {
 
       if (!results || results.length === 0) return null;
 
-      // Helper: check if result duration roughly matches expected
+      // Helper: check if result duration matches expected (±1s strict)
       const durationMatches = (r: any): boolean => {
         if (!expectedDuration) return true;
         const d = r.duration ?? 0;
         if (!d || d <= 0) return false; // REJECT unknown durations when we have expectedDuration
-        const tolerance = Math.max(5, expectedDuration * 0.05);
+        const tolerance = 1; // ±1 second — STRICT: only accept exact matches
         return Math.abs(d - expectedDuration) <= tolerance;
       };
 

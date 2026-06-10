@@ -328,10 +328,10 @@ function computeMultiFactorScore(
 /**
  * Determine the official/canonical duration from scored search results.
  *
- * Finds the MOST COMMON duration (mode) among all results with valid durations.
- * This is more reliable than using a single result because multiple uploads of
- * the same official song will typically agree on the same duration, while covers,
- * remixes, and live versions will have different durations.
+ * Uses TRUST-WEIGHTED mode: each duration vote is weighted by the result's
+ * trust score. High-trust results (official audio +50, Topic channel +100)
+ * dominate over low-trust generic uploads (score ~15). This prevents a
+ * group of low-trust wrong-duration results from hijacking the official length.
  *
  * Only considers results with trust score >= 15 (passing the filter) to avoid
  * contamination from penalised results.
@@ -341,23 +341,26 @@ function computeMultiFactorScore(
 function getOfficialDuration(
   scored: Array<{ r: SearchResult; score: number }>,
 ): number {
-  // Count occurrences of each duration (rounded to nearest second)
-  const durationCount = new Map<number, number>();
+  // Weight each duration by trust score so high-trust results (official audio,
+  // Topic channel) dominate over low-trust results (generic uploads).
+  const durationWeight = new Map<number, number>();
   for (const { r, score } of scored) {
     if (r.duration <= 0 || score < 15) continue;
     const dur = Math.round(r.duration);
-    durationCount.set(dur, (durationCount.get(dur) ?? 0) + 1);
+    // Weight by trust score: official audio (score 65) gets 4x the weight of
+    // a bare-minimum result (score 15). Topic channels (score 115) get ~8x.
+    durationWeight.set(dur, (durationWeight.get(dur) ?? 0) + score);
   }
 
-  if (durationCount.size === 0) return 0;
+  if (durationWeight.size === 0) return 0;
 
-  // Find the most common duration (mode)
+  // Find the duration with the highest weighted score
   let modeDuration = 0;
-  let maxCount = 0;
-  for (const [dur, count] of durationCount) {
+  let maxWeight = 0;
+  for (const [dur, weight] of durationWeight) {
     // Tie-break: prefer the shorter duration (avoids picking an hour-long loop)
-    if (count > maxCount || (count === maxCount && dur < modeDuration)) {
-      maxCount = count;
+    if (weight > maxWeight || (weight === maxWeight && dur < modeDuration)) {
+      maxWeight = weight;
       modeDuration = dur;
     }
   }
@@ -373,8 +376,8 @@ function getOfficialDuration(
  * variants with different durations are excluded.
  *
  * Uses a strict tolerance of ±1 second to account for minor encoding differences.
- * If no results match the strict tolerance, returns all results with valid durations
- * (graceful degradation to avoid returning zero results).
+ * If no results match the strict tolerance, returns an empty array — it's better
+ * to show nothing than to play wrong-duration tracks.
  */
 function filterByExactDuration(
   results: SearchResult[],
@@ -382,19 +385,11 @@ function filterByExactDuration(
 ): SearchResult[] {
   if (officialDuration <= 0) return results;
 
-  const TOLERANCE = 1; // ±1 second tolerance for minor encoding differences
-  const strict = results.filter(r => {
+  const TOLERANCE = 1; // ±1 second — STRICT LIMIT
+  return results.filter(r => {
     if (r.duration <= 0) return false;
     return Math.abs(r.duration - officialDuration) <= TOLERANCE;
   });
-
-  // Graceful degradation: if strict filtering kills all results, return all
-  // valid-duration results instead of returning nothing
-  if (strict.length === 0) {
-    return results.filter(r => r.duration > 0);
-  }
-
-  return strict;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
