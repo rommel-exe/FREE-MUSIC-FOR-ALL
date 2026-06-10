@@ -18,7 +18,9 @@ publish:
   # Set GH_TOKEN env var when building for publish: GH_TOKEN=xxx npm run electron:build
 mac:
   category: public.app-category.music
-  # Supply resources/icons/icon.icns for a custom macOS icon
+  identity: "-"                   # Ad-hoc sign (no Apple cert needed)
+  hardenedRuntime: false
+  gatekeeperAssess: false
   target:
     - dmg
     - zip
