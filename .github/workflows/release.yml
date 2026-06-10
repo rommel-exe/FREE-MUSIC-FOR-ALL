@@ -85,9 +85,8 @@ jobs:
         run: npx vite build
 
       - name: Package with electron-builder
-        run: npx electron-builder
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --publish never
+        # No GH_TOKEN here — prevents accidental publish on main branch builds
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
