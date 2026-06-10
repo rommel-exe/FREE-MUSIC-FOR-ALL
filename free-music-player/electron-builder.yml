@@ -18,17 +18,17 @@ publish:
   # Set GH_TOKEN env var when building for publish: GH_TOKEN=xxx npm run electron:build
 mac:
   category: public.app-category.music
-  icon: resources/icons/icon.icns
+  # Supply resources/icons/icon.icns for a custom macOS icon
   target:
     - dmg
     - zip
 win:
-  icon: resources/icons/icon.ico
+  # Supply resources/icons/icon.ico for a custom Windows icon
   target:
     - nsis
     - portable
 linux:
-  icon: resources/icons
+  # Supply PNGs in resources/icons/ for a custom Linux icon
   target:
     - AppImage
     - deb
