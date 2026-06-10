@@ -203,18 +203,36 @@ function downloadUpdate(url: string, destPath: string): Promise<void> {
         const totalBytes = Number.parseInt(response.headers['content-length'] ?? '0', 10);
         let transferred = 0;
         let startTime = Date.now();
+        let lastProgressSend = 0;
         const writeStream = fs.createWriteStream(destPath);
 
-        // Track progress — does NOT consume the stream (pipe handles consumption)
+        // Track progress — throttled to once per 250ms to avoid flooding the
+        // renderer with thousands of IPC calls per second.
         response.on('data', (chunk: Buffer) => {
           transferred += chunk.length;
           if (totalBytes > 0) {
-            const elapsed = (Date.now() - startTime) / 1000;
-            const bytesPerSecond = elapsed > 0 ? transferred / elapsed : 0;
+            const now = Date.now();
+            if (now - lastProgressSend >= 250) {
+              lastProgressSend = now;
+              const elapsed = (now - startTime) / 1000;
+              const bytesPerSecond = elapsed > 0 ? transferred / elapsed : 0;
+              sendToRenderer('update:progress', {
+                percent: Math.min((transferred / totalBytes) * 100, 100),
+                bytesPerSecond,
+                transferred,
+                total: totalBytes,
+              });
+            }
+          }
+        });
+
+        // Send one final 100% update when done
+        response.on('end', () => {
+          if (totalBytes > 0) {
             sendToRenderer('update:progress', {
-              percent: Math.min((transferred / totalBytes) * 100, 100),
-              bytesPerSecond,
-              transferred,
+              percent: 100,
+              bytesPerSecond: 0,
+              transferred: totalBytes,
               total: totalBytes,
             });
           }
