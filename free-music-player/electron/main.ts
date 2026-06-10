@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as https from 'node:https';
+import { finished } from 'node:stream/promises';
 
 // Bypass autoplay restrictions for audio streaming
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -168,28 +169,43 @@ async function checkForUpdate(): Promise<{
 
 /**
  * Download a file from a URL to a local path, streaming progress back to the
- * renderer as we go. Follows a single HTTP redirect (GitHub → S3 CDN).
+ * renderer. Follows HTTP 3xx redirects (GitHub → S3 CDN).
+ *
+ * Uses `finished()` from `stream/promises` so that connection drops / premature
+ * close are reliably caught and reject the promise.
  */
 function downloadUpdate(url: string, destPath: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const doDownload = (downloadUrl: string) => {
-      https.get(downloadUrl, (response) => {
-        // Follow one redirect (GitHub assets redirect to S3)
+  const followRedirect = (downloadUrl: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const req = https.get(downloadUrl, async (response) => {
+        // Follow redirect
         if (
           response.statusCode &&
           response.statusCode >= 300 &&
           response.statusCode < 400 &&
           response.headers.location
         ) {
-          doDownload(response.headers.location);
+          response.destroy();
+          try {
+            resolve(await followRedirect(response.headers.location));
+          } catch (e) {
+            reject(e);
+          }
           return;
         }
 
-        const totalBytes = parseInt(response.headers['content-length'] ?? '0', 10);
+        if (response.statusCode !== 200) {
+          response.destroy();
+          reject(new Error(`HTTP ${response.statusCode}`));
+          return;
+        }
+
+        const totalBytes = Number.parseInt(response.headers['content-length'] ?? '0', 10);
         let transferred = 0;
         let startTime = Date.now();
         const writeStream = fs.createWriteStream(destPath);
 
+        // Track progress — does NOT consume the stream (pipe handles consumption)
         response.on('data', (chunk: Buffer) => {
           transferred += chunk.length;
           if (totalBytes > 0) {
@@ -204,20 +220,40 @@ function downloadUpdate(url: string, destPath: string): Promise<void> {
           }
         });
 
+        // Pipe handles backpressure; finished() resolves when done or rejects on error
         response.pipe(writeStream);
 
-        writeStream.on('finish', () => {
-          writeStream.close();
-          resolve();
-        });
-        writeStream.on('error', (err) => {
+        try {
+          await finished(writeStream);
+        } catch (err: any) {
           fs.rmSync(destPath, { force: true });
           reject(err);
-        });
-      }).on('error', reject);
-    };
-    doDownload(url);
-  });
+          return;
+        }
+
+        // Validate we got the full file
+        if (totalBytes > 0 && transferred < totalBytes) {
+          fs.rmSync(destPath, { force: true });
+          reject(new Error(`Download incomplete: ${transferred}/${totalBytes} bytes`));
+          return;
+        }
+
+        resolve();
+      });
+
+      req.setTimeout(120_000, () => {
+        req.destroy();
+        reject(new Error('Download timed out after 120s'));
+      });
+
+      req.on('error', (err) => {
+        if (fs.existsSync(destPath)) fs.rmSync(destPath, { force: true });
+        reject(err);
+      });
+    });
+  };
+
+  return followRedirect(url);
 }
 
 /* ── IPC handlers ──────────────────────────────────────────────── */
