@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut } from 'electr
 import * as path from 'node:path';
 import { execSync } from 'node:child_process';
 import * as fs from 'node:fs';
+import * as https from 'node:https';
 
 // Bypass autoplay restrictions for audio streaming
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -56,37 +57,176 @@ function getRendererUrl(): string {
   return 'http://localhost:5173';
 }
 
-// ─── Auto-updater ──────────────────────────────────────────────────────
+// ─── Auto-updater (no Squirrel.Mac — direct GitHub + ditto) ─────────
+
+const GITHUB_OWNER = 'rommel-exe';
+const GITHUB_REPO = 'FREE-MUSIC-FOR-ALL';
+const GITHUB_API = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}`;
 
 let _checkInProgress = false;
+let _downloadInProgress = false;
 let _downloadedUpdatePath: string | null = null;
 
-/**
- * Lazily import electron-updater. It crashes in dev mode (unpackaged)
- * because autoUpdater expects a packaged app with update manifests.
- */
-async function getAutoUpdater() {
-  if (!app.isPackaged) return null;
-  try {
-    const { autoUpdater } = await import('electron-updater');
-    autoUpdater.autoDownload = false; // Download on user confirmation
-    autoUpdater.allowPrerelease = false;
-    return autoUpdater;
-  } catch {
-    return null;
-  }
-}
+/* ── helpers ───────────────────────────────────────────────────── */
 
 function sendToRenderer(channel: string, ...args: unknown[]) {
   mainWindow?.webContents.send(channel, ...args);
 }
 
+function getPlatformAssetName(version: string): string {
+  // Squirrel / electron-builder publishes these assets on each release
+  const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
+  return `Free-Music-Player-${version}-${arch}-mac.zip`;
+}
+
+function cleanVersion(tag: string): string {
+  return tag.startsWith('v') ? tag.slice(1) : tag;
+}
+
+/** True if `latest` is a higher semver than `current`. */
+function isNewerVersion(current: string, latest: string): boolean {
+  const cur = current.split('.').map(Number);
+  const lat = latest.split('.').map(Number);
+  for (let i = 0; i < Math.max(cur.length, lat.length); i++) {
+    const a = cur[i] ?? 0;
+    const b = lat[i] ?? 0;
+    if (b > a) return true;
+    if (b < a) return false;
+  }
+  return false;
+}
+
+interface GitHubRelease {
+  tag_name: string;
+  published_at: string;
+  body: string | null;
+  assets: Array<{ name: string; browser_download_url: string; size: number }>;
+}
+
+/**
+ * Fetch a JSON payload from the GitHub API.
+ * Uses raw `https` to avoid depending on global `fetch` availability.
+ */
+function githubGet<T>(path: string): Promise<T | null> {
+  return new Promise((resolve) => {
+    const url = new URL(`${GITHUB_API}${path}`);
+    https.get(
+      {
+        hostname: url.hostname,
+        path: url.pathname + url.search,
+        headers: {
+          Accept: 'application/vnd.github.v3+json',
+          'User-Agent': 'FreeMusicPlayer/1.0',
+        },
+      },
+      (res) => {
+        let body = '';
+        res.on('data', (chunk) => { body += chunk; });
+        res.on('end', () => {
+          if (res.statusCode !== 200) return resolve(null);
+          try {
+            resolve(JSON.parse(body));
+          } catch {
+            resolve(null);
+          }
+        });
+      },
+    ).on('error', () => resolve(null));
+  });
+}
+
+/* ── check + download logic ────────────────────────────────────── */
+
+/**
+ * Check GitHub for a newer release. Returns update info or `null`.
+ */
+async function checkForUpdate(): Promise<{
+  version: string;
+  downloadUrl: string;
+  size: number;
+  releaseDate: string;
+  releaseNotes: string;
+} | null> {
+  const release = await githubGet<GitHubRelease>('/releases/latest');
+  if (!release) return null;
+
+  const version = cleanVersion(release.tag_name);
+  if (!isNewerVersion(app.getVersion(), version)) return null;
+
+  const assetName = getPlatformAssetName(version);
+  const asset = release.assets.find((a) => a.name === assetName);
+  if (!asset) return null;
+
+  return {
+    version,
+    downloadUrl: asset.browser_download_url,
+    size: asset.size,
+    releaseDate: release.published_at,
+    releaseNotes: release.body ?? '',
+  };
+}
+
+/**
+ * Download a file from a URL to a local path, streaming progress back to the
+ * renderer as we go. Follows a single HTTP redirect (GitHub → S3 CDN).
+ */
+function downloadUpdate(url: string, destPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const doDownload = (downloadUrl: string) => {
+      https.get(downloadUrl, (response) => {
+        // Follow one redirect (GitHub assets redirect to S3)
+        if (
+          response.statusCode &&
+          response.statusCode >= 300 &&
+          response.statusCode < 400 &&
+          response.headers.location
+        ) {
+          doDownload(response.headers.location);
+          return;
+        }
+
+        const totalBytes = parseInt(response.headers['content-length'] ?? '0', 10);
+        let transferred = 0;
+        let startTime = Date.now();
+        const writeStream = fs.createWriteStream(destPath);
+
+        response.on('data', (chunk: Buffer) => {
+          transferred += chunk.length;
+          if (totalBytes > 0) {
+            const elapsed = (Date.now() - startTime) / 1000;
+            const bytesPerSecond = elapsed > 0 ? transferred / elapsed : 0;
+            sendToRenderer('update:progress', {
+              percent: Math.min((transferred / totalBytes) * 100, 100),
+              bytesPerSecond,
+              transferred,
+              total: totalBytes,
+            });
+          }
+        });
+
+        response.pipe(writeStream);
+
+        writeStream.on('finish', () => {
+          writeStream.close();
+          resolve();
+        });
+        writeStream.on('error', (err) => {
+          fs.rmSync(destPath, { force: true });
+          reject(err);
+        });
+      }).on('error', reject);
+    };
+    doDownload(url);
+  });
+}
+
+/* ── IPC handlers ──────────────────────────────────────────────── */
+
 function registerUpdateHandlers(): void {
-  // ── Renderer requests a check ──────────────────────────────────
+  // ── Manual check (triggered by user or on boot) ────────────────
   ipcMain.handle('update:check', async () => {
     if (_checkInProgress) return { ok: false, reason: 'already-checking' };
-    const updater = await getAutoUpdater();
-    if (!updater) {
+    if (!app.isPackaged) {
       sendToRenderer('update:status', { status: 'not-available', reason: 'dev-mode' });
       return { ok: false, reason: 'dev-mode' };
     }
@@ -95,20 +235,42 @@ function registerUpdateHandlers(): void {
     sendToRenderer('update:status', { status: 'checking' });
 
     try {
-      const result = await updater.checkForUpdates();
-      if (result && result.updateInfo && result.updateInfo.version !== app.getVersion()) {
-        // Update is available — download it
-        sendToRenderer('update:status', {
-          status: 'available',
-          version: result.updateInfo.version,
-          releaseDate: result.updateInfo.releaseDate,
-          releaseNotes: result.updateInfo.releaseNotes,
-        });
-
-        // Start downloading
-        updater.downloadUpdate(result.cancellationToken);
-      } else {
+      const info = await checkForUpdate();
+      if (!info) {
         sendToRenderer('update:status', { status: 'not-available' });
+        _checkInProgress = false;
+        return { ok: true };
+      }
+
+      // Notify renderer that a new version is available
+      sendToRenderer('update:status', {
+        status: 'available',
+        version: info.version,
+        releaseDate: info.releaseDate,
+        releaseNotes: info.releaseNotes,
+      });
+
+      // Start background download
+      _downloadInProgress = true;
+      const destPath = path.join(app.getPath('temp'), `fm-update-${info.version}.zip`);
+
+      try {
+        await downloadUpdate(info.downloadUrl, destPath);
+        _downloadedUpdatePath = destPath;
+        sendToRenderer('update:status', {
+          status: 'downloaded',
+          version: info.version,
+          releaseDate: info.releaseDate,
+          releaseNotes: info.releaseNotes,
+          downloadPath: destPath,
+        });
+      } catch (err: any) {
+        sendToRenderer('update:status', {
+          status: 'error',
+          message: `Download failed: ${err?.message ?? 'Unknown error'}`,
+        });
+      } finally {
+        _downloadInProgress = false;
       }
     } catch (err: any) {
       sendToRenderer('update:status', {
@@ -121,21 +283,20 @@ function registerUpdateHandlers(): void {
     return { ok: true };
   });
 
-  // ── Renderer requests to install (bypasses Squirrel.Mac's code-sign check) ─
+  // ── Install downloaded update ──────────────────────────────────
   ipcMain.on('update:quitAndInstall', () => {
     manualInstallUpdate();
   });
 
-  // ── IPC: manual install with explicit path ─────────────────────
+  // ── Install with explicit path (fallback) ──────────────────────
   ipcMain.on('update:install', (_event, downloadPath: string) => {
     _downloadedUpdatePath = downloadPath;
     manualInstallUpdate();
   });
 }
 
-/**
- * Find the .app bundle inside an extracted directory.
- */
+/* ── manual ditto-based install (bypasses Squirrel entirely) ───── */
+
 function findAppBundle(dir: string): string | null {
   for (const entry of fs.readdirSync(dir)) {
     const full = path.join(dir, entry);
@@ -148,9 +309,6 @@ function findAppBundle(dir: string): string | null {
   return null;
 }
 
-/**
- * Get the running app's .bundle path (e.g. /Applications/Free Music Player.app).
- */
 function getAppBundlePath(): string {
   const exePath = app.getPath('exe');
   const idx = exePath.indexOf('.app');
@@ -158,10 +316,9 @@ function getAppBundlePath(): string {
 }
 
 /**
- * Install a downloaded update WITHOUT Squirrel.Mac.
- *
- * Squirrel.Mac refuses unsigned updates, so we extract and swap the .app bundle
- * ourselves using ditto (macOS's built-in archiver that preserves ACLs / metadata).
+ * Extract the downloaded zip and hot-swap the .app bundle via `ditto`,
+ * then relaunch. This avoids Squirrel.Mac's code-signature validation
+ * which requires an Apple Developer account.
  */
 function manualInstallUpdate(): void {
   if (!_downloadedUpdatePath || !fs.existsSync(_downloadedUpdatePath)) {
@@ -177,31 +334,24 @@ function manualInstallUpdate(): void {
   const tmpDir = path.join(app.getPath('temp'), `fm-update-${Date.now()}`);
 
   try {
-    // 1. Extract the downloaded zip into a temp directory
     fs.mkdirSync(tmpDir, { recursive: true });
     execSync(`ditto -x -k "${updateFile}" "${tmpDir}"`, { stdio: 'pipe' });
 
-    // 2. Locate the .app bundle inside the extracted files
     const newApp = findAppBundle(tmpDir);
     if (!newApp) {
       throw new Error('No .app bundle found in downloaded update');
     }
 
-    // 3. Replace the current app
-    //    (macOS allows this while the app is running — the old binary stays loaded)
     if (fs.existsSync(appBundle)) {
       fs.rmSync(appBundle, { recursive: true, force: true });
     }
     execSync(`ditto "${newApp}" "${appBundle}"`, { stdio: 'pipe' });
 
-    // 4. Clean up temp files
     fs.rmSync(tmpDir, { recursive: true, force: true });
 
-    // 5. Relaunch (uses the newly placed .app bundle)
     app.relaunch();
     app.exit(0);
   } catch (err: any) {
-    // Clean up on failure
     if (fs.existsSync(tmpDir)) {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -213,74 +363,37 @@ function manualInstallUpdate(): void {
 }
 
 /**
- * Start listening to autoUpdater events after we know the updater exists.
+ * Silent background update check on boot (production only).
  */
-async function setupAutoUpdaterEvents(): Promise<void> {
-  const updater = await getAutoUpdater();
-  if (!updater) return;
+function scheduleBackgroundCheck(): void {
+  if (!app.isPackaged) return;
 
-  updater.on('checking-for-update', () => {
-    sendToRenderer('update:status', { status: 'checking' });
-  });
-
-  updater.on('update-available', (info) => {
-    sendToRenderer('update:status', {
-      status: 'available',
-      version: info.version,
-      releaseDate: info.releaseDate,
-      releaseNotes: info.releaseNotes,
-    });
-  });
-
-  updater.on('update-not-available', () => {
-    sendToRenderer('update:status', { status: 'not-available' });
-  });
-
-  updater.on('download-progress', (progress) => {
-    sendToRenderer('update:progress', {
-      percent: progress.percent ?? 0,
-      bytesPerSecond: progress.bytesPerSecond,
-      transferred: progress.transferred,
-      total: progress.total,
-    });
-  });
-
-  updater.on('update-downloaded', (info: any) => {
-    _downloadedUpdatePath = info.path ?? null;
-    sendToRenderer('update:status', {
-      status: 'downloaded',
-      version: info.version,
-      releaseDate: info.releaseDate,
-      releaseNotes: info.releaseNotes,
-      downloadPath: info.path,
-    });
-  });
-
-  updater.on('error', (err) => {
-    sendToRenderer('update:status', {
-      status: 'error',
-      message: err?.message ?? 'Unknown update error',
-    });
-  });
-}
-
-/**
- * Silently check for updates on boot (only in production).
- */
-async function checkForUpdatesOnBoot(): Promise<void> {
-  const updater = await getAutoUpdater();
-  if (!updater) return;
-
-  // Wait a few seconds so the app can settle before network calls
   setTimeout(async () => {
     try {
-      const result = await updater.checkForUpdates();
-      if (result?.updateInfo?.version && result.updateInfo.version !== app.getVersion()) {
-        // Auto-download in background
-        updater.downloadUpdate(result.cancellationToken);
+      const info = await checkForUpdate();
+      if (!info) return;
+
+      // Background auto-download
+      _downloadInProgress = true;
+      const destPath = path.join(app.getPath('temp'), `fm-update-${info.version}.zip`);
+
+      try {
+        await downloadUpdate(info.downloadUrl, destPath);
+        _downloadedUpdatePath = destPath;
+        sendToRenderer('update:status', {
+          status: 'downloaded',
+          version: info.version,
+          releaseDate: info.releaseDate,
+          releaseNotes: info.releaseNotes,
+          downloadPath: destPath,
+        });
+      } catch {
+        // Silent — background download failure shouldn't annoy the user
+      } finally {
+        _downloadInProgress = false;
       }
     } catch {
-      // Silent — don't bother the user on boot
+      // Silent
     }
   }, 5000);
 }
@@ -387,11 +500,8 @@ app.whenReady().then(async () => {
 
   createMainWindow();
 
-  // Wire auto-updater events BEFORE checking (so we don't miss them)
-  await setupAutoUpdaterEvents();
-
-  // Silent background check on boot
-  await checkForUpdatesOnBoot();
+  // Silent background check on boot (no Squirrel — uses GitHub API + ditto install)
+  scheduleBackgroundCheck();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

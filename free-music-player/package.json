@@ -1,6 +1,6 @@
 {
   "name": "free-music-player",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "description": "Free music player with YouTube streaming",
   "homepage": "https://github.com/rommel-exe/FREE-MUSIC-FOR-ALL",
   "author": {
@@ -25,7 +25,6 @@
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
     "better-sqlite3": "^11.7.0",
-    "electron-updater": "^6.5.0",
     "framer-motion": "^12.0.0",
     "isomorphic-unfetch": "^4.0.2",
     "lucide-react": "^0.468.0",
