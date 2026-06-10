@@ -462,8 +462,11 @@ function createMainWindow(): BrowserWindow {
     minHeight: MIN_HEIGHT,
     backgroundColor: '#00000000',
     frame: false,
-    vibrancy: 'fullscreen-ui',
-    visualEffectState: 'active',
+    // NOTE: vibrancy is DISABLED — it conflicts with CSS backdrop-filter
+    // and causes severe UI lag on macOS. The glass effects are handled
+    // entirely in CSS with GPU-accelerated backdrop-filter instead.
+    // vibrancy: 'fullscreen-ui',
+    // visualEffectState: 'active',
     titleBarStyle: 'hiddenInset',
     webPreferences: {
       preload: getPreloadPath(),

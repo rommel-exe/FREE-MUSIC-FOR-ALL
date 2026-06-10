@@ -27,7 +27,7 @@ input, textarea {
   }
 
   html, #root {
-    background: transparent;
+    background: rgb(24, 24, 26);
   }
 
   body {
@@ -107,45 +107,50 @@ input, textarea {
      macOS Materials (Liquid Glass-inspired)
      ============================================ */
 
+  /* GPU-accelerated glass styles — will-change forces compositor layers,
+     isolation prevents stacking-context overhead, and reduced blur avoids
+     GPU framebuffer readback bottlenecks on macOS. */
   .glass-sidebar {
     background: rgba(36, 36, 38, 0.93);
-    backdrop-filter: blur(24px) saturate(160%);
-    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    backdrop-filter: blur(16px) saturate(120%);
+    -webkit-backdrop-filter: blur(16px) saturate(120%);
     border-right: 0.5px solid rgba(84, 84, 88, 0.65);
+    will-change: transform;
+    isolation: isolate;
   }
 
   .glass-content {
     background: rgba(44, 44, 46, 0.88);
-    backdrop-filter: blur(16px) saturate(140%);
-    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    will-change: transform;
+    isolation: isolate;
   }
 
   .glass-panel {
     background: rgba(28, 28, 30, 0.95);
-    backdrop-filter: blur(20px) saturate(150%);
-    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    backdrop-filter: blur(12px) saturate(120%);
+    -webkit-backdrop-filter: blur(12px) saturate(120%);
     border: 0.5px solid rgba(84, 84, 88, 0.4);
-  }
-
-  .glass-control {
-    background: rgba(99, 99, 102, 0.32);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    will-change: transform;
+    isolation: isolate;
   }
 
   .glass-elevated {
     background: rgba(36, 36, 38, 0.93);
-    backdrop-filter: blur(24px) saturate(160%);
-    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    backdrop-filter: blur(16px) saturate(120%);
+    -webkit-backdrop-filter: blur(16px) saturate(120%);
     border: 0.5px solid rgba(84, 84, 88, 0.65);
+    will-change: transform;
+    isolation: isolate;
   }
 
   .glass-popover {
     background: rgba(28, 28, 30, 0.96);
-    backdrop-filter: blur(32px) saturate(180%);
-    -webkit-backdrop-filter: blur(32px) saturate(180%);
+    backdrop-filter: blur(16px) saturate(120%);
+    -webkit-backdrop-filter: blur(16px) saturate(120%);
     border: 0.5px solid rgba(84, 84, 88, 0.65);
     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+    will-change: transform;
+    isolation: isolate;
   }
 
   .glass-card {
@@ -162,10 +167,12 @@ input, textarea {
 
   .glass-tab {
     background: rgba(120, 120, 128, 0.12);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
     border: 0.5px solid transparent;
     transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform;
+    isolation: isolate;
   }
 
   .glass-tab:hover {
