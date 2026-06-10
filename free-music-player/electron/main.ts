@@ -1,5 +1,7 @@
 import { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut } from 'electron';
 import * as path from 'node:path';
+import { execSync } from 'node:child_process';
+import * as fs from 'node:fs';
 
 // Bypass autoplay restrictions for audio streaming
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -57,6 +59,7 @@ function getRendererUrl(): string {
 // ─── Auto-updater ──────────────────────────────────────────────────────
 
 let _checkInProgress = false;
+let _downloadedUpdatePath: string | null = null;
 
 /**
  * Lazily import electron-updater. It crashes in dev mode (unpackaged)
@@ -118,13 +121,95 @@ function registerUpdateHandlers(): void {
     return { ok: true };
   });
 
-  // ── Renderer requests to quit & install ────────────────────────
-  ipcMain.on('update:quitAndInstall', async () => {
-    const updater = await getAutoUpdater();
-    if (updater) {
-      setImmediate(() => updater.quitAndInstall());
-    }
+  // ── Renderer requests to install (bypasses Squirrel.Mac's code-sign check) ─
+  ipcMain.on('update:quitAndInstall', () => {
+    manualInstallUpdate();
   });
+
+  // ── IPC: manual install with explicit path ─────────────────────
+  ipcMain.on('update:install', (_event, downloadPath: string) => {
+    _downloadedUpdatePath = downloadPath;
+    manualInstallUpdate();
+  });
+}
+
+/**
+ * Find the .app bundle inside an extracted directory.
+ */
+function findAppBundle(dir: string): string | null {
+  for (const entry of fs.readdirSync(dir)) {
+    const full = path.join(dir, entry);
+    if (entry.endsWith('.app')) return full;
+    if (fs.statSync(full).isDirectory()) {
+      const found = findAppBundle(full);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/**
+ * Get the running app's .bundle path (e.g. /Applications/Free Music Player.app).
+ */
+function getAppBundlePath(): string {
+  const exePath = app.getPath('exe');
+  const idx = exePath.indexOf('.app');
+  return idx !== -1 ? exePath.slice(0, idx + 4) : path.dirname(exePath);
+}
+
+/**
+ * Install a downloaded update WITHOUT Squirrel.Mac.
+ *
+ * Squirrel.Mac refuses unsigned updates, so we extract and swap the .app bundle
+ * ourselves using ditto (macOS's built-in archiver that preserves ACLs / metadata).
+ */
+function manualInstallUpdate(): void {
+  if (!_downloadedUpdatePath || !fs.existsSync(_downloadedUpdatePath)) {
+    sendToRenderer('update:status', {
+      status: 'error',
+      message: 'Update file not found',
+    });
+    return;
+  }
+
+  const updateFile = _downloadedUpdatePath;
+  const appBundle = getAppBundlePath();
+  const tmpDir = path.join(app.getPath('temp'), `fm-update-${Date.now()}`);
+
+  try {
+    // 1. Extract the downloaded zip into a temp directory
+    fs.mkdirSync(tmpDir, { recursive: true });
+    execSync(`ditto -x -k "${updateFile}" "${tmpDir}"`, { stdio: 'pipe' });
+
+    // 2. Locate the .app bundle inside the extracted files
+    const newApp = findAppBundle(tmpDir);
+    if (!newApp) {
+      throw new Error('No .app bundle found in downloaded update');
+    }
+
+    // 3. Replace the current app
+    //    (macOS allows this while the app is running — the old binary stays loaded)
+    if (fs.existsSync(appBundle)) {
+      fs.rmSync(appBundle, { recursive: true, force: true });
+    }
+    execSync(`ditto "${newApp}" "${appBundle}"`, { stdio: 'pipe' });
+
+    // 4. Clean up temp files
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+
+    // 5. Relaunch (uses the newly placed .app bundle)
+    app.relaunch();
+    app.exit(0);
+  } catch (err: any) {
+    // Clean up on failure
+    if (fs.existsSync(tmpDir)) {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+    sendToRenderer('update:status', {
+      status: 'error',
+      message: err?.message ?? 'Update install failed',
+    });
+  }
 }
 
 /**
@@ -160,12 +245,14 @@ async function setupAutoUpdaterEvents(): Promise<void> {
     });
   });
 
-  updater.on('update-downloaded', (info) => {
+  updater.on('update-downloaded', (info: any) => {
+    _downloadedUpdatePath = info.path ?? null;
     sendToRenderer('update:status', {
       status: 'downloaded',
       version: info.version,
       releaseDate: info.releaseDate,
       releaseNotes: info.releaseNotes,
+      downloadPath: info.path,
     });
   });
 
