@@ -378,18 +378,18 @@ function manualInstallUpdate(): void {
       throw new Error('No .app bundle found in downloaded update');
     }
 
-    if (fs.existsSync(appBundle)) {
-      fs.rmSync(appBundle, { recursive: true, force: true });
+      if (fs.existsSync(appBundle)) {
+      execSync(`rm -rf "${appBundle}"`, { stdio: 'pipe' });
     }
     execSync(`ditto "${newApp}" "${appBundle}"`, { stdio: 'pipe' });
 
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    execSync(`rm -rf "${tmpDir}"`, { stdio: 'pipe' });
 
     app.relaunch();
     app.exit(0);
   } catch (err: any) {
     if (fs.existsSync(tmpDir)) {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      try { execSync(`rm -rf "${tmpDir}"`, { stdio: 'pipe' }); } catch {}
     }
     sendToRenderer('update:status', {
       status: 'error',
