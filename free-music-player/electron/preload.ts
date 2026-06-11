@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getRecentlyPlayed: () => invoke('library:getRecentlyPlayed'),
     incrementPlayCount: (id: string) => invoke('library:incrementPlayCount', id),
     addRecentlyPlayed: (id: string) => invoke('library:addRecentlyPlayed', id),
+    resolveMissingYoutubeIds: () => invoke('library:resolveMissingYoutubeIds'),
   },
 
   playlist: {

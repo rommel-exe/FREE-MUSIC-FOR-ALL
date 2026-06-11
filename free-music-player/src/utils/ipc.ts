@@ -44,6 +44,9 @@ export const ipc = {
       api?.library?.incrementPlayCount(id) ?? Promise.resolve(),
     addRecentlyPlayed: (id: string): Promise<void> =>
       api?.library?.addRecentlyPlayed(id) ?? Promise.resolve(),
+    resolveMissingYoutubeIds: (): Promise<{ resolved: number; total: number }> =>
+      (api?.library?.resolveMissingYoutubeIds() as Promise<{ resolved: number; total: number }> | undefined) ??
+      Promise.resolve({ resolved: 0, total: 0 }),
   },
 
   playlist: {

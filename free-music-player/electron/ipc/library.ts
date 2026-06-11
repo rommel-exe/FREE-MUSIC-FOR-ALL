@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 import * as db from '../utils/database';
 import type { Track } from '../utils/types';
 import { validate, IdSchema, TrackSchema } from '../utils/validate';
+import { resolveYoutubeIds } from '../services/playlistImport';
 
 function generateId(): string {
   try { return crypto.randomUUID(); } catch { return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`; }
@@ -82,5 +83,34 @@ export function registerLibraryHandlers(): void {
       const validatedId = validate(IdSchema, id, 'track ID');
       db.addRecentlyPlayed(validatedId);
     } catch (err) { console.error('[library] addRecentlyPlayed failed:', err); }
+  });
+
+  /**
+   * Scan the library for tracks missing youtube_id and resolve them
+   * using exact-duration YouTube Music matching. Returns the count
+   * of successfully resolved tracks.
+   */
+  ipcMain.handle('library:resolveMissingYoutubeIds', async () => {
+    const unresolved = db.getTracksWithoutYoutubeIds();
+    if (unresolved.length === 0) return { resolved: 0, total: 0 };
+
+    const tracks = unresolved.map(t => ({
+      title: t.title,
+      artist: t.artist,
+      duration: t.duration,
+      thumbnail: t.thumbnail,
+      youtubeId: t.youtube_id || undefined,
+    }));
+
+    const resolved = await resolveYoutubeIds(tracks);
+    let count = 0;
+    for (const track of resolved) {
+      if (track.youtubeId) {
+        db.updateTrack(track.title, { youtube_id: track.youtubeId, source: 'youtube' } as any);
+        count++;
+      }
+    }
+
+    return { resolved: count, total: unresolved.length };
   });
 }

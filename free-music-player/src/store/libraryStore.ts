@@ -60,6 +60,19 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     try {
       const tracks = await ipc.library.getTracks();
       set({ tracks, loading: false });
+
+      // Fire-and-forget: resolve any tracks missing youtube_id (e.g. old
+      // Spotify imports) using exact-duration YouTube matching
+      const unresolved = tracks.filter(t => !t.youtubeId);
+      if (unresolved.length > 0) {
+        ipc.library.resolveMissingYoutubeIds().then(({ resolved, total }) => {
+          if (resolved > 0) {
+            console.log(`[Library] Resolved ${resolved}/${total} missing YouTube IDs`);
+            // Refresh tracks to pick up the newly resolved IDs
+            get().loadTracks();
+          }
+        }).catch(() => {});
+      }
     } catch (e: any) {
       set({ error: e.message, loading: false });
     }

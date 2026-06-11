@@ -195,6 +195,13 @@ export function getAllTracks(): Track[] {
   return mapTracks(getDb().prepare('SELECT * FROM tracks ORDER BY created_at DESC').all());
 }
 
+/** Get all tracks that don't have a YouTube ID yet (e.g. imported from Spotify). */
+export function getTracksWithoutYoutubeIds(): Track[] {
+  return mapTracks(
+    getDb().prepare("SELECT * FROM tracks WHERE youtube_id IS NULL OR youtube_id = '' ORDER BY created_at DESC").all(),
+  );
+}
+
 export function getTrackById(id: string): Track | undefined {
   return mapTrack(getDb().prepare('SELECT * FROM tracks WHERE id = ?').get(id));
 }
