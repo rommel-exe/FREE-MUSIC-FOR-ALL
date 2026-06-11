@@ -525,8 +525,8 @@ class MediaResolver {
       }
 
       if (metadata?.expectedDuration && metadata.expectedDuration > 0) {
-        const tolerance = 1; // ±1 second — STRICT: only accept exact matches
-        if (Math.abs(duration - metadata.expectedDuration) > tolerance) {
+        // ZERO tolerance — duration must be EXACTLY identical
+        if (Math.abs(duration - metadata.expectedDuration) !== 0) {
           this.storeVerificationFailure(
             videoId,
             'duration_mismatch',
@@ -688,13 +688,12 @@ class MediaResolver {
 
       if (!results || results.length === 0) return null;
 
-      // Helper: check if result duration matches expected (±1s strict)
+      // Helper: check if result duration matches expected EXACTLY (zero tolerance)
       const durationMatches = (r: any): boolean => {
         if (!expectedDuration) return true;
         const d = r.duration ?? 0;
         if (!d || d <= 0) return false; // REJECT unknown durations when we have expectedDuration
-        const tolerance = 1; // ±1 second — STRICT: only accept exact matches
-        return Math.abs(d - expectedDuration) <= tolerance;
+        return Math.abs(d - expectedDuration) === 0; // ZERO tolerance — must be exact
       };
 
       // Rank results by how closely their duration matches the official length.

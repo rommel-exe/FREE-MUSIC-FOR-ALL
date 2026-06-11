@@ -114,6 +114,25 @@ function computeTrustScore(result: Pick<SearchResult, 'title' | 'artist' | 'dura
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+//  Duration Closeness Score
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Compute a duration closeness score (0 or 100) — EXACT match only.
+ *
+ * BINARY: either the duration is identical to the official track length
+ * or it's the wrong track. No graduated tiers. No "close enough".
+ * Song length is definitive.
+ *
+ *   Exact match (0s diff)  → 100  — the one true track
+ *   Anything else          →   0  — wrong track, period
+ */
+function computeDurationClosenessScore(duration: number, officialDuration: number): number {
+  if (officialDuration <= 0 || duration <= 0) return 0;
+  return Math.abs(duration - officialDuration) === 0 ? 100 : 0;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 //  View Count Extraction from Raw API Response
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -266,18 +285,24 @@ function getBestThumbnail(
 /**
  * Compute a ranking score for a search result.
  *
- * YouTube Music's native search order is already popularity-aware and
- * generally excellent. This function only ADJUSTS the order slightly:
+ * EXACT DURATION MATCH is the ONLY signal that matters (100 out of max 170 pts).
+ * If the duration doesn't match exactly, the result scores 0 on the dominant
+ * factor and can never catch up — everything else is just a tiebreaker among
+ * exact matches.
  *
- *   1. View count (0-30)           — gentle popularity boost
- *   2. Artist match (0-30)         — boost if query mentions this artist
- *   3. Trust score (0-20)          — prefer official / penalize garbage
- *   4. Native position (0-50)      — YT Music's own ranking (primary signal)
+ *   Signal                      Max    Why
+ *   ────────────────────────────────────────────────────────────
+ *   1. Duration exact match     100    Must be THE EXACT track
+ *   2. Native position (YT)      30    YT's own relevance ranking
+ *   3. View count (log)          20    Popularity = likely correct
+ *   4. Artist match              20    Query mentions artist name
+ *   5. Trust score contribution   0    Duration already confirms it
+ *                                ───
+ *   TOTAL                       170
  *
- * TOTAL: 0-130. View count and artist match provide modest adjustments
- * on top of YouTube's already-good ranking. We do NOT re-rank by title
- * relevance — that would boost niche results with more query words in
- * their titles over the actual popular versions.
+ * A wrong-duration track gets 0 from factor 1. Even with max everything
+ * else (30+20+20=70), it can't beat a single exact-match track with score
+ * 100+0+0+0=100. This guarantees that exact-length tracks ALWAYS rank first.
  */
 function computeMultiFactorScore(
   result: SearchResult,
@@ -285,6 +310,7 @@ function computeMultiFactorScore(
   viewCount: number | undefined,
   trustScore: number,
   nativePosition: number,
+  officialDuration: number,
 ): number {
   const queryLower = query.toLowerCase().trim();
   const artistLower = result.artist.toLowerCase();
@@ -292,35 +318,35 @@ function computeMultiFactorScore(
 
   let score = 0;
 
-  // ── 1. Native position (0-50) — PRIMARY signal ──
-  // YouTube's search algorithm already factors in view counts, listener
-  // popularity, and content relevance. We keep this as the strongest
-  // signal and only make minor adjustments.
-  score += Math.max(0, 50 - nativePosition * 0.5);
+  // ── 1. Duration closeness (0-100) — PRIMARY signal ──
+  // Song length is the single best indicator of "is this the actual track".
+  // More important than everything else combined.
+  score += computeDurationClosenessScore(result.duration, officialDuration);
 
-  // ── 2. View count (log scale, 0-30) — gentle popularity boost ──
+  // ── 2. Native position (0-30) — YT Music's own ranking ──
+  score += Math.max(0, 30 - nativePosition * 0.3);
+
+  // ── 3. View count (log scale, 0-20) — popularity boost ──
   if (viewCount && viewCount > 0) {
     const logViews = Math.log10(viewCount);
-    // log10(1M)=6 → 18pts, log10(1B)=9 → 27pts
-    score += Math.min(30, (logViews / 9) * 30);
+    score += Math.min(20, (logViews / 9) * 20);
   }
 
-  // ── 3. Artist match (0-30) — query explicitly names this artist ──
+  // ── 4. Artist match (0-20) — query explicitly names this artist ──
   if (artistLower && queryLower.includes(artistLower)) {
-    score += 30;
+    score += 20;
   } else if (artistLower && queryWords.length > 0) {
     const artistWords = artistLower.split(/\s+/);
     const matchedArtist = queryWords.filter(w =>
       artistWords.some(aw => aw.includes(w)),
     ).length;
     if (matchedArtist > 0) {
-      score += Math.min(30, matchedArtist * 10);
+      score += Math.min(20, matchedArtist * 7);
     }
   }
 
-  // ── 4. Trust score contribution (0-20) ──
-  // Gentle preference for tracks with official audio / VEVO signals
-  score += Math.max(0, Math.min(100, trustScore)) * 0.2;
+  // ── 5. Trust score contribution (0-10) ──
+  score += Math.max(0, Math.min(100, trustScore)) * 0.1;
 
   return score;
 }
@@ -369,15 +395,17 @@ function getOfficialDuration(
 }
 
 /**
- * Filter search results to ONLY include tracks matching the exact official duration.
+ * Filter search results to ONLY include tracks matching the EXACT official duration.
  *
  * This ensures only tracks that match the EXACT length of the official track
  * on YouTube Music will be played. Covers, remixes, live versions, and other
  * variants with different durations are excluded.
  *
- * Uses a strict tolerance of ±1 second to account for minor encoding differences.
- * If no results match the strict tolerance, returns an empty array — it's better
- * to show nothing than to play wrong-duration tracks.
+ * Uses ZERO tolerance — the duration must be exactly identical. YouTube
+ * reports integer seconds, so if two tracks have the same duration in
+ * seconds they are the same recording.
+ * If no results match, returns an empty array — better to show nothing
+ * than to play wrong-duration tracks.
  */
 function filterByExactDuration(
   results: SearchResult[],
@@ -385,10 +413,9 @@ function filterByExactDuration(
 ): SearchResult[] {
   if (officialDuration <= 0) return results;
 
-  const TOLERANCE = 1; // ±1 second — STRICT LIMIT
   return results.filter(r => {
     if (r.duration <= 0) return false;
-    return Math.abs(r.duration - officialDuration) <= TOLERANCE;
+    return Math.abs(r.duration - officialDuration) === 0;
   });
 }
 
@@ -477,40 +504,47 @@ async function searchMusic(query: string, limit: number): Promise<SearchResult[]
       r.viewCount = viewCountMap.get(r.id);
     }
 
-    // ── Step 3: Score + rank ──
-    // Only use multi-factor ranking if we have meaningful view count data
-    // (at least 3 results with >1K views each). Otherwise preserve YT Music's
-    // native popularity-based order, which is already excellent.
-    const meaningfulViewCounts = unique.filter(r => (r.viewCount ?? 0) > 1000).length >= 3;
+    // ── Step 3: Score + rank (DURATION CLOSENESS DOMINATES) ──
+    // Duration closeness is the PRIMARY signal. View counts, native order,
+    // and trust score are tiebreakers for equally-close matches.
     const scored = unique.map((r, i) => ({
       r,
       trustScore: computeTrustScore(r),
       rankScore: 0,
     }));
 
-    if (meaningfulViewCounts) {
-      // We have real popularity data — apply gentle multi-factor adjustments
-      for (let i = 0; i < scored.length; i++) {
-        scored[i].rankScore = computeMultiFactorScore(
-          scored[i].r, q, scored[i].r.viewCount, scored[i].trustScore, i,
-        );
-      }
-      scored.sort((a, b) => b.rankScore - a.rankScore);
-      console.log('[search] Ranked by multi-factor score (meaningful view counts found)');
-    } else {
-      // Preserve YouTube Music's native popularity-based order.
-      // YT Music's search results are already sorted by relevance/popularity.
-      // We only apply trust score as a FILTER, not as a sort.
-      console.log('[search] No meaningful view counts — preserving YT Music native order');
-      for (let i = 0; i < scored.length; i++) {
-        scored[i].rankScore = scored.length - i;
-      }
-    }
-
-    // ── Step 4: Trust Filter + Duration Filter ──
+    // Compute official duration BEFORE scoring so it can be used as the
+    // primary ranking signal (not just a post-hoc filter).
     const officialDuration = getOfficialDuration(
       scored.map(s => ({ r: s.r, score: s.trustScore })),
     );
+    const hasOfficialDuration = officialDuration > 0;
+
+    const meaningfulViewCounts = unique.filter(r => (r.viewCount ?? 0) > 1000).length >= 3;
+
+    if (meaningfulViewCounts) {
+      // Full scoring: duration closeness (0-100) + all tiebreakers
+      for (let i = 0; i < scored.length; i++) {
+        scored[i].rankScore = computeMultiFactorScore(
+          scored[i].r, q, scored[i].r.viewCount, scored[i].trustScore, i, officialDuration,
+        );
+      }
+      scored.sort((a, b) => b.rankScore - a.rankScore);
+      console.log('[search] Ranked by duration closeness + multi-factor');
+    } else {
+      // Without view counts, still use duration closeness as primary
+      // with native position as lightweight tiebreaker.
+      for (let i = 0; i < scored.length; i++) {
+        const durScore = hasOfficialDuration
+          ? computeDurationClosenessScore(scored[i].r.duration, officialDuration)
+          : 0;
+        scored[i].rankScore = durScore + (scored.length - i) * 0.1;
+      }
+      scored.sort((a, b) => b.rankScore - a.rankScore);
+      console.log('[search] Ranked by duration closeness + native position');
+    }
+
+    // ── Step 4: Trust Filter + Duration Hard Filter ──
     const trustFiltered = scored.filter(s => s.trustScore >= 15).map(s => s.r);
     const filtered = filterByExactDuration(trustFiltered, officialDuration);
 
@@ -526,7 +560,6 @@ async function searchMusic(query: string, limit: number): Promise<SearchResult[]
     console.error('[search] ytmusic-api failed:', err);
     // Fallback to yt-dlp search — yt-dlp reliably returns view_count
     const fallback = await searchWithYtdlp(q, limit * 2);
-    const meaningfulViewCounts = fallback.filter(r => (r.viewCount ?? 0) > 1000).length >= 3;
 
     const scored = fallback.map((r, i) => ({
       r,
@@ -534,19 +567,31 @@ async function searchMusic(query: string, limit: number): Promise<SearchResult[]
       rankScore: 0,
     }));
 
-    if (meaningfulViewCounts) {
-      for (let i = 0; i < scored.length; i++) {
-        scored[i].rankScore = computeMultiFactorScore(
-          scored[i].r, q, scored[i].r.viewCount, scored[i].trustScore, i,
-        );
-      }
-      scored.sort((a, b) => b.rankScore - a.rankScore);
-    }
-    // No meaningful view counts: keep yt-dlp's native order (also unlikely)
-
+    // Compute official duration BEFORE scoring (same approach as primary path)
     const officialDuration = getOfficialDuration(
       scored.map(s => ({ r: s.r, score: s.trustScore })),
     );
+    const hasOfficialDuration = officialDuration > 0;
+    const meaningfulViewCounts = fallback.filter(r => (r.viewCount ?? 0) > 1000).length >= 3;
+
+    if (meaningfulViewCounts) {
+      for (let i = 0; i < scored.length; i++) {
+        scored[i].rankScore = computeMultiFactorScore(
+          scored[i].r, q, scored[i].r.viewCount, scored[i].trustScore, i, officialDuration,
+        );
+      }
+      scored.sort((a, b) => b.rankScore - a.rankScore);
+    } else {
+      // Duration closeness primary + native position as tiebreaker
+      for (let i = 0; i < scored.length; i++) {
+        const durScore = hasOfficialDuration
+          ? computeDurationClosenessScore(scored[i].r.duration, officialDuration)
+          : 0;
+        scored[i].rankScore = durScore + (scored.length - i) * 0.1;
+      }
+      scored.sort((a, b) => b.rankScore - a.rankScore);
+    }
+
     const trustFiltered = scored.filter(s => s.trustScore >= 15).map(s => s.r);
     const filtered = filterByExactDuration(trustFiltered, officialDuration);
     verifySearchResults(filtered).catch(() => {});

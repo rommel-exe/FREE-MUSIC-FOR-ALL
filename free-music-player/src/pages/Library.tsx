@@ -14,7 +14,7 @@ import { TrackRow } from '@/components/common/TrackRow';
 /*  Types & constants                                                  */
 /* ------------------------------------------------------------------ */
 
-type SortField = 'title' | 'artist' | 'createdAt' | 'playCount';
+type SortField = 'title' | 'artist' | 'createdAt' | 'playCount' | 'duration';
 type TabFilter = 'all' | 'liked' | 'downloaded';
 
 const TAB_ITEMS: { id: TabFilter; label: string }[] = [
@@ -239,13 +239,14 @@ export function LibraryPage() {
 
           {/* Sort pills */}
           <div className="flex items-center gap-1">
-            {(
-              [
-                ['title', 'Title'],
-                ['artist', 'Artist'],
-                ['playCount', 'Plays'],
-              ] as const
-            ).map(([field, label]) => (
+              {(
+                [
+                  ['title', 'Title'],
+                  ['artist', 'Artist'],
+                  ['duration', 'Length'],
+                  ['playCount', 'Plays'],
+                ] as const
+              ).map(([field, label]) => (
               <button
                 key={field}
                 onClick={() => handleSort(field)}

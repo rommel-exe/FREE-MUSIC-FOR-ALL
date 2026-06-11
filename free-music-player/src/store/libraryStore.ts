@@ -8,7 +8,7 @@ interface LibraryState {
   recentlyPlayed: Track[];
   playlists: Playlist[];
   searchQuery: string;
-  sortBy: 'title' | 'artist' | 'album' | 'createdAt' | 'playCount';
+  sortBy: 'title' | 'artist' | 'album' | 'createdAt' | 'playCount' | 'duration';
   sortOrder: 'asc' | 'desc';
   loading: boolean;
   error: string | null;
@@ -21,7 +21,7 @@ interface LibraryState {
   removeTrack: (id: string) => Promise<void>;
   toggleFavorite: (id: string) => Promise<void>;
   setSearchQuery: (query: string) => void;
-  setSortBy: (field: 'title' | 'artist' | 'album' | 'createdAt' | 'playCount') => void;
+  setSortBy: (field: 'title' | 'artist' | 'album' | 'createdAt' | 'playCount' | 'duration') => void;
   toggleSortOrder: () => void;
   getFilteredTracks: () => Track[];
 
@@ -148,9 +148,15 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           t.album?.toLowerCase().includes(q)
       );
     }
-    return [...filtered].sort((a: any, b: any) => {
-      const aVal = a[sortBy] || '';
-      const bVal = b[sortBy] || '';
+    return [...filtered].sort((a, b) => {
+      // Duration: ABSOLUTELY STRINGENT numeric sort — pure integer subtraction
+      if (sortBy === 'duration') {
+        const aDur = a.duration ?? 0;
+        const bDur = b.duration ?? 0;
+        return sortOrder === 'asc' ? aDur - bDur : bDur - aDur;
+      }
+      const aVal = (a as any)[sortBy] ?? '';
+      const bVal = (b as any)[sortBy] ?? '';
       const cmp = typeof aVal === 'string' ? aVal.localeCompare(bVal) : aVal - bVal;
       return sortOrder === 'asc' ? cmp : -cmp;
     });
