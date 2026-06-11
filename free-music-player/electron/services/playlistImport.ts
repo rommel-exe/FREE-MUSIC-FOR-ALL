@@ -5,6 +5,10 @@
  * YouTube: uses yt-dlp --flat-playlist to get track data quickly.
  * Spotify: tries the embed page (__NEXT_DATA__) first, falls back to a
  * hidden BrowserWindow for playlists with >100 tracks.
+ *
+ * For Spotify tracks (which have no YouTube ID), searches YouTube Music
+ * using exact-duration matching to find the official audio track before
+ * importing — same stringent logic as the search function.
  */
 
 import { execFile } from 'node:child_process';
@@ -24,6 +28,163 @@ export interface PlaylistTrack {
   duration: number;
   thumbnail: string;
   youtubeId?: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Exact-Duration YouTube Search (same logic as search.ts)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Compute a trust score identical to search.ts computeTrustScore().
+ * Gives +50 for "official audio", +40 for "(audio)", +20 for VEVO,
+ * +5 for artist metadata. Penalises live/remix/cover/karaoke heavily.
+ */
+function trustScore(title: string, artist: string, duration: number): number {
+  const titleLower = title.toLowerCase();
+  const artistLower = artist.toLowerCase();
+  let score = 0;
+
+  if (artistLower.includes(' - topic')) score += 100;
+  if (/\bofficial\s+audio\b/i.test(titleLower)) score += 50;
+  if (/\(audio\)/i.test(titleLower)) score += 40;
+  if (artistLower.includes('vevo')) score += 20;
+  if (duration >= 120 && duration <= 360) score += 10;
+  else if (duration >= 60 && duration < 120) score += 5;
+  else if (duration > 360 && duration <= 480) score += 5;
+  if (artist && artist.length > 0) score += 5;
+
+  if (/\b(live|concert)\b/i.test(titleLower)) score -= 1000;
+  if (/\blive\s+(at|from|in|session|version|performance|recording)\b/i.test(titleLower)) score -= 800;
+  if (/\b(live|concert)\b/i.test(artistLower) && !artistLower.includes(' - topic')) score -= 500;
+  if (/\b(remix|remixed)\b/i.test(titleLower)) score -= 500;
+  if (/\bcover\b/i.test(titleLower)) score -= 500;
+  if (/\b(karaoke|instrumental)\b/i.test(titleLower)) score -= 500;
+  if (/\b(acoustic|stripped|unplugged)\b/i.test(titleLower)) score -= 500;
+  if (/\b(nightcore|sped\s*up|slowed|reverb)\b/i.test(titleLower)) score -= 300;
+  if (/\b(1\s*hour|10\s*hours|loop|compilation|megamix)\b/i.test(titleLower)) score -= 300;
+  if (/\blyric\s+video\b/i.test(titleLower) && !/\bofficial\b/i.test(titleLower)) score -= 200;
+
+  return score;
+}
+
+/**
+ * Determine the official/canonical duration from search results using
+ * trust-weighted mode — same logic as search.ts getOfficialDuration().
+ */
+function getOfficialDuration(results: Array<Record<string, any>>): number {
+  const durationWeight = new Map<number, number>();
+  for (const r of results) {
+    const rd = r.duration ?? 0;
+    if (rd <= 0) continue;
+    const score = trustScore(r.name || r.title || '', r.artist?.name || '', rd);
+    if (score < 15) continue;
+    const dur = Math.round(rd);
+    durationWeight.set(dur, (durationWeight.get(dur) ?? 0) + score);
+  }
+  if (durationWeight.size === 0) return 0;
+  let modeDuration = 0;
+  let maxWeight = 0;
+  for (const [dur, weight] of durationWeight) {
+    if (weight > maxWeight || (weight === maxWeight && dur < modeDuration)) {
+      maxWeight = weight;
+      modeDuration = dur;
+    }
+  }
+  return modeDuration;
+}
+
+/**
+ * Search YouTube Music for a track and resolve to the exact-duration match.
+ * Returns the YouTube videoId or null if no exact match found.
+ */
+async function searchExactYouTubeMatch(
+  artist: string,
+  title: string,
+  expectedDuration: number,
+): Promise<string | null> {
+  try {
+    const mod = await import('ytmusic-api');
+    const YTMusic = mod.default;
+    const yt = new YTMusic();
+    await yt.initialize();
+
+    const query = `${artist} ${title}`.trim();
+    const results = await yt.searchSongs(query);
+    if (!results || results.length === 0) return null;
+
+    // Compute official duration from trust-weighting
+    const officialDuration = getOfficialDuration(results);
+
+    // Use expected duration from Spotify if official determination fails
+    const targetDuration = officialDuration > 0 ? officialDuration : expectedDuration;
+    if (targetDuration <= 0) return null;
+
+    // Filter to EXACT duration match (zero tolerance)
+    const exactMatches = results.filter((r: any) => {
+      const d = r.duration ?? 0;
+      return d > 0 && Math.abs(d - targetDuration) === 0;
+    });
+    if (exactMatches.length === 0) return null;
+
+    // Among exact matches, pick the highest-trust result
+    const scored = exactMatches.map((r: any) => ({
+      r,
+      score: trustScore(r.name || r.title || '', r.artist?.name || '', r.duration),
+    }));
+    scored.sort((a: any, b: any) => b.score - a.score);
+
+    // Prefer results with " - Topic" channel or official audio token
+    const best = scored[0];
+    return best.r.videoId || best.r.id || null;
+  } catch (err) {
+    console.error(`[Import] YouTube search failed for "${artist} - ${title}":`, err);
+    return null;
+  }
+}
+
+/**
+ * Enrich Spotify playlist tracks with YouTube videoIds using exact-duration matching.
+ * Runs searches with limited concurrency to avoid rate-limiting.
+ */
+export async function resolveYoutubeIds(
+  tracks: PlaylistTrack[],
+  onProgress?: (message: string) => void,
+): Promise<PlaylistTrack[]> {
+  const CONCURRENCY = 3;
+  const results: PlaylistTrack[] = [];
+  let completed = 0;
+  const total = tracks.length;
+
+  // Process in batches of CONCURRENCY
+  for (let i = 0; i < tracks.length; i += CONCURRENCY) {
+    const batch = tracks.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.allSettled(
+      batch.map(async (track) => {
+        if (track.youtubeId) return track; // Already has an ID
+        const videoId = await searchExactYouTubeMatch(
+          track.artist, track.title, track.duration,
+        );
+        completed++;
+        if (onProgress) {
+          onProgress(`Matching track ${completed}/${total} to YouTube...`);
+        }
+        return {
+          ...track,
+          youtubeId: videoId || undefined,
+        };
+      }),
+    );
+
+    for (const r of batchResults) {
+      if (r.status === 'fulfilled') {
+        results.push(r.value);
+      }
+    }
+  }
+
+  const matched = results.filter(t => t.youtubeId).length;
+  console.log(`[Import] YouTube matching: ${matched}/${total} tracks resolved`);
+  return results;
 }
 
 export interface PlaylistImportResult {

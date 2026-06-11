@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 import {
   importYouTubePlaylist,
   importSpotifyPlaylist,
+  resolveYoutubeIds,
   type PlaylistImportResult,
 } from '../services/playlistImport';
 import * as db from '../utils/database';
@@ -48,6 +49,8 @@ async function importAsPlaylist(
     source = await importYouTubePlaylist(trimmed);
   } else {
     source = await importSpotifyPlaylist(trimmed);
+    // --- 1b. Resolve every Spotify track to its exact-duration YouTube match ---
+    source.tracks = await resolveYoutubeIds(source.tracks);
   }
 
   const name = (playlistName?.trim() || source.name || 'Imported Playlist').slice(0, 200);

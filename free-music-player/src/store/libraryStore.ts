@@ -163,7 +163,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   importAsPlaylist: async (url, playlistName, onProgress) => {
-    onProgress?.('Fetching playlist...');
+    onProgress?.('Fetching playlist and matching tracks to exact YouTube sources...');
     const result = await ipc.import.asPlaylist(url, playlistName);
     onProgress?.('Reloading library...');
     // Refresh tracks and playlists so UI updates immediately
