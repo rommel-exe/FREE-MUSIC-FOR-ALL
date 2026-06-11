@@ -87,6 +87,8 @@ export function LibraryPage() {
     toggleSortOrder,
     sortOrder,
     getFilteredTracks,
+    resolving,
+    resolveMissingIds,
   } = useLibraryStore(
     useShallow((s) => ({
       tracks: s.tracks,
