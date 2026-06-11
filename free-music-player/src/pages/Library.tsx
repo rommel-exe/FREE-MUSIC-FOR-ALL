@@ -98,6 +98,8 @@ export function LibraryPage() {
       toggleSortOrder: s.toggleSortOrder,
       sortOrder: s.sortOrder,
       getFilteredTracks: s.getFilteredTracks,
+      resolving: s.resolving,
+      resolveMissingIds: s.resolveMissingIds,
     })),
   );
   const { playTracks, currentTrack, isPlaying } = usePlayerStore(
@@ -270,6 +272,22 @@ export function LibraryPage() {
               </button>
             ))}
           </div>
+
+          {/* ── Resolve missing YouTube IDs ───────────────────── */}
+          {!resolving && (
+            <button
+              onClick={() => resolveMissingIds()}
+              className="text-xs text-white/30 hover:text-white/60 transition-colors duration-mac px-2 py-1.5 rounded-mac hover:bg-white/[0.04]"
+              type="button"
+            >
+              Fix
+            </button>
+          )}
+          {resolving && (
+            <span className="text-xs text-white/30 animate-pulse px-2">
+              Fixing…
+            </span>
+          )}
         </div>
       </div>
 

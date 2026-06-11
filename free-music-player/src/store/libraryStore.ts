@@ -12,6 +12,7 @@ interface LibraryState {
   sortOrder: 'asc' | 'desc';
   loading: boolean;
   error: string | null;
+  resolving: boolean; // tracks missing youtube_id being resolved
 
   loadTracks: () => Promise<void>;
   loadFavorites: () => Promise<void>;
@@ -24,6 +25,7 @@ interface LibraryState {
   setSortBy: (field: 'title' | 'artist' | 'album' | 'createdAt' | 'playCount' | 'duration') => void;
   toggleSortOrder: () => void;
   getFilteredTracks: () => Track[];
+  resolveMissingIds: () => Promise<void>;
 
   /**
    * Import a YouTube or Spotify playlist and create a new playlist in the
@@ -54,6 +56,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   sortOrder: 'desc',
   loading: false,
   error: null,
+  resolving: false,
 
   loadTracks: async () => {
     set({ loading: true, error: null });
@@ -65,13 +68,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       // Spotify imports) using exact-duration YouTube matching
       const unresolved = tracks.filter(t => !t.youtubeId);
       if (unresolved.length > 0) {
-        ipc.library.resolveMissingYoutubeIds().then(({ resolved, total }) => {
-          if (resolved > 0) {
-            console.log(`[Library] Resolved ${resolved}/${total} missing YouTube IDs`);
-            // Refresh tracks to pick up the newly resolved IDs
-            get().loadTracks();
-          }
-        }).catch(() => {});
+        get().resolveMissingIds();
       }
     } catch (e: any) {
       set({ error: e.message, loading: false });
@@ -188,5 +185,22 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const playlist = await ipc.playlist.createPlaylist(name, description || '');
     await get().loadPlaylists();
     return playlist as Playlist;
+  },
+
+  resolveMissingIds: async () => {
+    if (get().resolving) return; // already in progress
+    set({ resolving: true });
+    try {
+      const { resolved, total } = await ipc.library.resolveMissingYoutubeIds();
+      if (resolved > 0) {
+        console.log(`[Library] Resolved ${resolved}/${total} missing YouTube IDs`);
+        // Refresh tracks to pick up the newly resolved IDs
+        await get().loadTracks();
+      }
+    } catch (e: any) {
+      console.error('[Library] Failed to resolve missing YouTube IDs:', e);
+    } finally {
+      set({ resolving: false });
+    }
   },
 }));
