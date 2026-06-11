@@ -119,11 +119,12 @@ async function searchExactYouTubeMatch(
     const targetDuration = officialDuration > 0 ? officialDuration : expectedDuration;
     if (targetDuration <= 0) return null;
 
-    // Filter to EXACT duration match (integer-second — round both sides
-    // because YouTube returns float durations but getOfficialDuration rounds)
+    // Filter to EXACT duration match (integer-second tolerance — round both
+    // sides because YouTube returns float durations but getOfficialDuration
+    // rounds. Use <= 1 because Spotify and YouTube may differ by 1s.)
     const exactMatches = results.filter((r: any) => {
       const d = r.duration ?? 0;
-      return d > 0 && Math.abs(Math.round(d) - Math.round(targetDuration)) === 0;
+      return d > 0 && Math.abs(Math.round(d) - Math.round(targetDuration)) <= 1;
     });
     if (exactMatches.length === 0) return null;
 

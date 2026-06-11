@@ -527,7 +527,8 @@ class MediaResolver {
       if (metadata?.expectedDuration && metadata.expectedDuration > 0) {
         // Round both sides to integer seconds — YouTube's yt-dlp duration can
         // be a float (e.g. 180.3) even for an "exact" match to a 3:00 track.
-        if (Math.abs(Math.round(duration) - Math.round(metadata.expectedDuration)) !== 0) {
+        // Use <= 1 because different platforms may report ±1s variation.
+        if (Math.abs(Math.round(duration) - Math.round(metadata.expectedDuration)) > 1) {
           this.storeVerificationFailure(
             videoId,
             'duration_mismatch',
@@ -696,7 +697,7 @@ class MediaResolver {
         if (!expectedDuration) return true;
         const d = r.duration ?? 0;
         if (!d || d <= 0) return false;
-        return Math.abs(Math.round(d) - Math.round(expectedDuration)) === 0;
+        return Math.abs(Math.round(d) - Math.round(expectedDuration)) <= 1;
       };
 
       // Rank results by how closely their duration matches the official length.

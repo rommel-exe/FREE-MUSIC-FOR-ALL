@@ -133,7 +133,9 @@ function computeDurationClosenessScore(duration: number, officialDuration: numbe
   // 180.3) and getOfficialDuration rounds to integers. Without rounding
   // here, correct tracks with fractional-second durations get score 0 and
   // are outranked by wrong tracks at the exact integer.
-  return Math.abs(Math.round(duration) - Math.round(officialDuration)) === 0 ? 100 : 0;
+  // Use <= 1 tolerance because different platforms (Spotify, YouTube)
+  // can report the same track with a 1-second difference.
+  return Math.abs(Math.round(duration) - Math.round(officialDuration)) <= 1 ? 100 : 0;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -419,7 +421,7 @@ function filterByExactDuration(
 
   return results.filter(r => {
     if (r.duration <= 0) return false;
-    return Math.abs(Math.round(r.duration) - Math.round(officialDuration)) === 0;
+    return Math.abs(Math.round(r.duration) - Math.round(officialDuration)) <= 1;
   });
 }
 
