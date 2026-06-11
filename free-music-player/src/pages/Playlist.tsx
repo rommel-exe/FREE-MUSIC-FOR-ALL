@@ -212,7 +212,7 @@ export function PlaylistPage() {
   );
 
   return (
-    <div className="h-full overflow-y-auto relative z-10 pb-32 scrollbar-thin">
+    <div className="h-full overflow-y-auto overscroll-contain relative z-10 pb-32 scrollbar-thin">
       {selectedPlaylist ? (
         <motion.div
           key={selectedPlaylist.id}
@@ -222,7 +222,7 @@ export function PlaylistPage() {
         >
           {/* ── Hero section ──────────────────────────────── */}
           <div
-            className="relative px-8 pt-16 pb-8 drag-region"
+            className="relative px-mac-xl pt-16 pb-8 drag-region noise-texture"
             style={{ background: gradientBg }}
           >
             <div className="flex items-end gap-7 no-drag">
@@ -254,7 +254,7 @@ export function PlaylistPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: 0.1 }}
               >
-                <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-white/50 mb-2">
+                <p className="text-mac-caption-2 font-bold uppercase tracking-[0.15em] text-white/50 mb-2">
                   Playlist
                 </p>
                 <h1 className="text-[40px] font-bold text-white leading-[1.1] tracking-tight mb-3 line-clamp-2">
@@ -274,7 +274,7 @@ export function PlaylistPage() {
           {/* ── Actions bar ───────────────────────────────── */}
           {playlistTracks.length > 0 && (
             <motion.div
-              className="px-8 py-4 flex items-center gap-3"
+              className="px-mac-xl py-4 flex items-center gap-3"
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.25, delay: 0.15 }}
@@ -315,15 +315,15 @@ export function PlaylistPage() {
           ) : (
             <div className="px-4 pb-8">
               {/* Column headers */}
-              <div className="flex items-center gap-3 px-6 py-2 border-b border-white/[0.06] mb-0.5">
-                <span className="w-8 text-[10px] text-white/30 text-right uppercase tracking-wider font-semibold">
+              <div className="flex items-center gap-3 px-6 py-2 border-b border-mac-separator mb-0.5">
+                <span className="w-8 text-mac-caption-2 text-white/30 text-right uppercase tracking-wider font-semibold">
                   #
                 </span>
                 <span className="w-11 flex-shrink-0" /> {/* thumbnail spacer */}
-                <span className="flex-1 text-[10px] text-white/30 uppercase tracking-wider font-semibold">
+                <span className="flex-1 text-mac-caption-2 text-white/30 uppercase tracking-wider font-semibold">
                   Title
                 </span>
-                <span className="w-14 text-right text-[10px] text-white/30 uppercase tracking-wider font-semibold">
+                <span className="w-14 text-right text-mac-caption-2 text-white/30 uppercase tracking-wider font-semibold">
                   Time
                 </span>
                 <span className="w-8" /> {/* action spacer */}
@@ -372,7 +372,7 @@ export function PlaylistPage() {
         </motion.div>
       ) : (
         /* ── Empty state — no playlist selected ──────────────── */
-        <div className="flex flex-col items-center justify-center h-full text-center px-8">
+        <div className="flex flex-col items-center justify-center h-full text-center px-mac-xl">
           <motion.div
             className="w-20 h-20 rounded-full bg-gradient-to-br from-white/[0.04] to-transparent flex items-center justify-center mb-5 ring-1 ring-white/[0.06]"
             initial={{ opacity: 0, scale: 0.9 }}

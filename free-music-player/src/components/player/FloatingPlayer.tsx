@@ -97,9 +97,9 @@ const VolumeSlider = memo(function VolumeSlider({
       aria-valuenow={Math.round(percent)}
       tabIndex={0}
     >
-      {/* Fill */}
+      {/* Fill — mac-blue */}
       <div
-        className="h-full bg-white/50 rounded-full relative transition-[width] duration-100"
+        className="h-full bg-mac-blue rounded-full relative transition-[width] duration-100"
         style={{ width: `${percent}%` }}
       >
         {/* Thumb */}
@@ -134,7 +134,7 @@ const CtrlButton = memo(function CtrlButton({
       aria-label={label}
       className={`
         relative w-9 h-9 rounded-full flex items-center justify-center
-        transition-all duration-200 ease-out
+        transition-all duration-mac ease-mac
         ${active
           ? 'text-mac-accent'
           : 'text-white/60 hover:text-white'
@@ -146,7 +146,7 @@ const CtrlButton = memo(function CtrlButton({
     >
       {children}
       {active && (
-        <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-mac-accent" />
+        <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-mac-accent shadow-[0_0_4px_rgba(10,132,255,0.4)]" />
       )}
     </button>
   );
@@ -166,10 +166,10 @@ const PlayButton = memo(function PlayButton({
       onClick={onClick}
       aria-label={isPlaying ? 'Pause' : 'Play'}
       className="
-        w-11 h-11 rounded-full bg-white text-black
+        w-12 h-12 rounded-full bg-white text-black
         flex items-center justify-center
         hover:scale-105 active:scale-95
-        transition-all duration-200 ease-out
+        transition-all duration-mac ease-mac
         shadow-lg shadow-white/10
       "
     >
@@ -270,8 +270,6 @@ export const FloatingPlayer = memo(function FloatingPlayer() {
 
   if (!currentTrack) return null;
 
-  const percent = duration > 0 ? (progress / duration) * 100 : 0;
-
   return (
     <div
       className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[min(720px,calc(100vw-48px))]"
@@ -298,7 +296,7 @@ export const FloatingPlayer = memo(function FloatingPlayer() {
               className="
                 relative w-14 h-14 rounded-xl overflow-hidden flex-shrink-0
                 group/art
-                transition-all duration-300 ease-out
+                transition-all duration-mac ease-mac
                 hover:scale-105 hover:shadow-lg hover:shadow-black/30
                 active:scale-95
                 ring-1 ring-white/10
@@ -321,7 +319,7 @@ export const FloatingPlayer = memo(function FloatingPlayer() {
                 absolute inset-0 bg-black/50 backdrop-blur-sm
                 flex items-center justify-center
                 opacity-0 group-hover/art:opacity-100
-                transition-opacity duration-200
+                transition-opacity duration-mac
               ">
                 <Maximize2 className="w-4 h-4 text-white" />
               </div>
@@ -377,7 +375,7 @@ export const FloatingPlayer = memo(function FloatingPlayer() {
           {/* ── Right: Secondary Controls ── */}
           <div className={`
             flex items-center gap-0.5
-            transition-all duration-300 ease-out
+            transition-all duration-250 ease-mac
             overflow-hidden
             ${isHovered ? 'opacity-100 max-w-[260px]' : 'opacity-0 max-w-0 pointer-events-none'}
           `}>
@@ -412,7 +410,7 @@ export const FloatingPlayer = memo(function FloatingPlayer() {
                 )}
               </CtrlButton>
               <div className={`
-                transition-all duration-300 ease-out
+                transition-all duration-250 ease-mac
                 ${isHovered ? 'w-20 opacity-100' : 'w-0 opacity-0'}
               `}>
                 <VolumeSlider volume={isMuted ? 0 : volume} onChange={setVolume} />
@@ -464,6 +462,8 @@ const ProgressBarInline = memo(function ProgressBarInline({
 }) {
   const percent = duration > 0 ? (progress / duration) * 100 : 0;
   const trackRef = useRef<HTMLDivElement>(null);
+  const [scrubbing, setScrubbing] = useState(false);
+  const [hoverTime, setHoverTime] = useState<number | null>(null);
 
   const commitSeek = useCallback(
     (fraction: number) => {
@@ -474,6 +474,14 @@ const ProgressBarInline = memo(function ProgressBarInline({
 
   const { onPointerDown, onPointerMove, onPointerUp } = useSliderDrag(trackRef, commitSeek);
 
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    onPointerMove(e);
+    if (!trackRef.current) return;
+    const rect = trackRef.current.getBoundingClientRect();
+    const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    setHoverTime(fraction * duration);
+  }, [onPointerMove, duration]);
+
   return (
     <div className="flex items-center gap-3">
       <span className="text-[10px] text-white/40 w-8 text-right tabular-nums select-none font-mono">
@@ -483,9 +491,9 @@ const ProgressBarInline = memo(function ProgressBarInline({
       <div
         ref={trackRef}
         className="flex-1 h-5 flex items-center touch-none cursor-pointer group/pbar"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
+        onPointerDown={(e) => { setScrubbing(true); onPointerDown(e); }}
+        onPointerMove={handlePointerMove}
+        onPointerUp={(e) => { setScrubbing(false); onPointerUp(e); }}
         role="slider"
         aria-label="Playback progress"
         aria-valuemin={0}
@@ -493,20 +501,20 @@ const ProgressBarInline = memo(function ProgressBarInline({
         aria-valuenow={Math.round(percent)}
         tabIndex={0}
       >
-        <div className="w-full h-1 bg-white/10 rounded-full relative overflow-visible">
-          {/* Fill */}
+        <div className="w-full h-1 bg-white/10 rounded-full relative overflow-visible group-hover/pbar:h-1.5 transition-all duration-150">
+          {/* Fill — mac-blue */}
           <div
-            className="h-full bg-white/70 rounded-full relative transition-[width] duration-75"
+            className="h-full bg-mac-blue rounded-full relative transition-[width] duration-75"
             style={{ width: `${percent}%` }}
           >
             {/* Glow */}
-            <div className="absolute inset-0 rounded-full bg-white/20 blur-sm" />
+            <div className="absolute inset-0 rounded-full bg-mac-blue/30 blur-sm" />
           </div>
-          {/* Thumb */}
+          {/* Thumb — blue circle */}
           <div
             className="
               absolute top-1/2 -translate-y-1/2 -translate-x-1/2
-              w-3 h-3 bg-white rounded-full shadow-md
+              w-3 h-3 bg-white rounded-full shadow-mac-glow
               opacity-0 group-hover/pbar:opacity-100
               transition-opacity duration-200
               pointer-events-none

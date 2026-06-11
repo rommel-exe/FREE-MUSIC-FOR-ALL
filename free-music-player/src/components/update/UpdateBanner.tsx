@@ -41,7 +41,7 @@ export function UpdateBanner() {
     switch (status) {
       case 'downloaded':
         return (
-          <div className="glass-popover rounded-mac-xl p-4 shadow-mac-xl border border-[#30D158]/30 bg-[#30D158]/5">
+          <div className="glass-popover rounded-mac-xl p-4 shadow-mac-xl border border-[#30D158]/30 bg-[#30D158]/5 noise-texture">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2.5">
                 <CheckCircle className="w-5 h-5 text-[#30D158]" />
@@ -71,7 +71,7 @@ export function UpdateBanner() {
 
       case 'error':
         return (
-          <div className="glass-popover rounded-mac-xl px-4 py-3 shadow-mac-xl border border-amber-500/30 bg-amber-500/5">
+          <div className="glass-popover rounded-mac-xl px-4 py-3 shadow-mac-xl border border-amber-500/30 bg-amber-500/5 noise-texture">
             <div className="flex items-start gap-3">
               <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
@@ -105,7 +105,7 @@ export function UpdateBanner() {
 
       default:
         return (
-          <div className="glass-popover rounded-mac-xl px-4 py-3 shadow-mac-xl border border-white/[0.08]">
+          <div className="glass-popover rounded-mac-xl px-4 py-3 shadow-mac-xl border border-white/[0.08] noise-texture">
             <div className="flex items-center gap-3">
               {status === 'checking' ? (
                 <Loader2 className="w-4 h-4 animate-spin text-mac-blue flex-shrink-0" />

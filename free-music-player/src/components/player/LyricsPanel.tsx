@@ -51,14 +51,14 @@ const LyricLineView = memo(function LyricLineView({
   index: number;
 }) {
   const baseClasses =
-    'transition-all duration-300 ease-out cursor-pointer select-none px-4 py-1 rounded-lg';
+    'transition-all duration-300 ease-out cursor-pointer select-none px-4 py-1 rounded-mac';
 
   const stateClasses = synced
     ? isActive
       ? 'text-white text-xl font-bold scale-[1.02] drop-shadow-[0_0_12px_rgba(255,255,255,0.15)]'
       : isPast
-        ? 'text-white/25 text-lg'
-        : 'text-white/45 text-lg'
+        ? 'text-white/20 text-lg'
+        : 'text-white/50 text-lg'
     : 'text-white/65 text-lg';
 
   return (
@@ -159,7 +159,7 @@ export const LyricsPanel = memo(function LyricsPanel() {
             <div className="absolute inset-0 h-20 bg-gradient-to-b from-white/[0.03] to-transparent pointer-events-none" />
 
             <div className="relative flex items-center gap-3">
-              <h2 className="text-mac-title-2 text-white font-semibold">Lyrics</h2>
+              <h2 className="text-mac-headline text-white font-semibold">Lyrics</h2>
 
               {/* Sync offset nudge controls */}
               {lyrics?.synced && (
@@ -185,7 +185,7 @@ export const LyricsPanel = memo(function LyricsPanel() {
 
             <button
               onClick={toggleLyrics}
-              className="relative p-1.5 -mr-1 rounded-lg text-white/40 hover:text-white hover:bg-white/[0.08] active:bg-white/[0.12] transition-all"
+              className="relative p-1.5 -mr-1 rounded-mac text-white/40 hover:text-white hover:bg-white/[0.08] active:bg-white/[0.12] transition-all duration-mac"
               type="button"
               title="Close lyrics"
             >
@@ -227,7 +227,7 @@ export const LyricsPanel = memo(function LyricsPanel() {
         {/* ── Lyrics content ─────────────────────────────────── */}
         <div
           ref={containerRef}
-          className="flex-1 overflow-y-auto scrollbar-thin px-2 py-8"
+          className="flex-1 overflow-y-auto scrollbar-thin overscroll-contain px-2 py-8"
         >
           {/* Loading */}
           {loading && (
@@ -252,7 +252,7 @@ export const LyricsPanel = memo(function LyricsPanel() {
               <div className="w-14 h-14 rounded-2xl bg-white/[0.04] flex items-center justify-center ring-1 ring-white/[0.06]">
                 <AlertCircle className="w-6 h-6 text-white/15" />
               </div>
-              <p className="text-[13px] text-white/30 font-medium">{error}</p>
+              <p className="text-mac-body text-white/30 font-medium">{error}</p>
             </motion.div>
           )}
 
@@ -285,7 +285,7 @@ export const LyricsPanel = memo(function LyricsPanel() {
               <div className="w-14 h-14 rounded-2xl bg-white/[0.04] flex items-center justify-center ring-1 ring-white/[0.06]">
                 <Music className="w-6 h-6 text-white/15" />
               </div>
-              <p className="text-[13px] text-white/30 font-medium">
+              <p className="text-mac-body text-white/30 font-medium">
                 No lyrics available
               </p>
             </motion.div>

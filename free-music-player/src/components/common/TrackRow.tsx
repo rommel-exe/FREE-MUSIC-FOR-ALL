@@ -140,6 +140,7 @@ export const TrackRow = memo(function TrackRow({
 
   /* ── Size classes ───────────────────────────────────────────────── */
   const thumbnailSize = size === 'sm' ? 'w-9 h-9' : size === 'lg' ? 'w-12 h-12' : 'w-11 h-11';
+  const rowPadding = size === 'sm' ? 'py-1.5' : size === 'lg' ? 'py-3' : 'py-2.5';
 
   /* ── Drag styling ───────────────────────────────────────────────── */
   const isDragged = dragIndex === index;
@@ -165,7 +166,7 @@ export const TrackRow = memo(function TrackRow({
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className={`track-row group ${isActive ? 'active' : ''} ${
+      className={`track-row group ${rowPadding} ${isActive ? 'active' : ''} ${
         canReorder ? 'cursor-grab active:cursor-grabbing' : ''
       } ${isDragged ? 'opacity-40' : ''} ${
         isDragOver
@@ -178,7 +179,7 @@ export const TrackRow = memo(function TrackRow({
     >
       {/* ── Number / Play / Equalizer / Drag handle ─────────────── */}
       {showIndex && (
-        <span className="track-number w-8 text-sm text-right tabular-nums flex items-center justify-end flex-shrink-0">
+        <span className="track-number w-8 text-mac-caption-2 text-right tabular-nums font-mono flex items-center justify-end flex-shrink-0">
           {showEqualizer ? (
             <EqualizerBars />
           ) : showGrip ? (
@@ -195,7 +196,7 @@ export const TrackRow = memo(function TrackRow({
 
       {/* ── Thumbnail ──────────────────────────────────────────── */}
       <div
-        className={`${thumbnailSize} rounded-md bg-white/[0.06] flex-shrink-0 overflow-hidden ring-1 ring-white/[0.04]`}
+        className={`${thumbnailSize} rounded-mac-sm bg-white/[0.06] flex-shrink-0 overflow-hidden ring-1 ring-white/[0.04]`}
       >
         {track.thumbnail ? (
           <img
@@ -221,12 +222,12 @@ export const TrackRow = memo(function TrackRow({
           {track.title}
         </div>
         {(showArtist || showAlbum) && (
-          <div className="text-xs text-white/45 truncate mt-0.5 leading-tight">
+          <div className="text-xs text-mac-tertiary truncate mt-0.5 leading-tight">
             {showArtist && track.artist}
             {showArtist && showAlbum && track.album ? ' \u00b7 ' : ''}
             {showAlbum && track.album}
             {downloadMeta && (
-              <span className="ml-1.5 text-white/25">{'\u00b7'} {downloadMeta}</span>
+              <span className="ml-1.5 text-mac-quaternary">{'\u00b7'} {downloadMeta}</span>
             )}
           </div>
         )}
@@ -234,7 +235,7 @@ export const TrackRow = memo(function TrackRow({
 
       {/* ── Duration ───────────────────────────────────────────── */}
       {showDuration && (
-        <span className="text-xs text-white/30 tabular-nums font-mono w-14 text-right flex-shrink-0">
+        <span className="text-mac-caption-2 text-white/30 tabular-nums font-mono w-14 text-right flex-shrink-0">
           {formatDuration(track.duration || 0)}
         </span>
       )}
@@ -252,7 +253,7 @@ export const TrackRow = memo(function TrackRow({
                 title={trackFavorite ? 'Unlike' : 'Like'}
               >
                 <Heart
-                  className={`w-3.5 h-3.5 transition-all duration-150 ${
+                  className={`w-3.5 h-3.5 transition-all duration-mac ${
                     trackFavorite
                       ? 'text-mac-red fill-current'
                       : 'text-white/45 hover:text-white/70'
@@ -339,7 +340,7 @@ export const TrackRow = memo(function TrackRow({
       {onRemove && (
         <button
           onClick={handleRemoveClick}
-          className={`mac-button-ghost p-1.5 rounded-md flex-shrink-0 transition-opacity duration-150 ${
+          className={`mac-button-ghost p-1.5 rounded-md flex-shrink-0 transition-opacity duration-mac ${
             hovered ? 'opacity-100' : 'opacity-0'
           }`}
           type="button"

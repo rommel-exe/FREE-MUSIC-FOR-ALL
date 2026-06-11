@@ -21,7 +21,7 @@ function formatFileSize(bytes: number): string {
 function formatRelativeDate(dateString: string | null | undefined): string {
   if (!dateString) return '';
   const date = new Date(dateString.includes('T') ? dateString : dateString.replace(' ', 'T') + 'Z');
-  if (isNaN(date.getTime())) return '';
+  if (Number.isNaN(date.getTime())) return '';
   const diffMs = Date.now() - date.getTime();
   const diffSec = Math.floor(diffMs / 1000);
   if (diffSec < 60) return 'just now';
@@ -73,13 +73,13 @@ export function DownloadsPage() {
   const hasAny = list.length > 0;
 
   return (
-    <div className="h-full overflow-y-auto relative z-10 pb-32">
+    <div className="h-full overflow-y-auto overscroll-contain relative z-10 pb-32">
       {/* ── Header ──────────────────────────────────────────────── */}
-      <div className="px-8 pt-14 pb-6 drag-region">
-        <h1 className="text-[28px] font-bold text-white/90 tracking-tight mb-1 no-drag">
+      <div className="px-mac-xl pt-14 pb-6 drag-region">
+        <h1 className="text-mac-large-title text-white/90 tracking-tight mb-1 no-drag">
           Downloads
         </h1>
-        <p className="text-sm text-white/30 no-drag">
+        <p className="text-mac-footnote text-white/30 no-drag">
           Manage your offline music
         </p>
       </div>
@@ -96,15 +96,15 @@ export function DownloadsPage() {
           </p>
         </div>
       ) : (
-        <div className="px-8 animate-fade-in space-y-8">
+        <div className="px-mac-xl animate-fade-in space-y-mac-2xl">
           {/* ── Active downloads ─────────────────────────────── */}
           {activeDownloads.length > 0 && (
             <section>
-              <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-3">
+              <h2 className="text-mac-footnote font-semibold text-white/50 uppercase tracking-wider mb-3">
                 Downloading ({activeDownloads.length})
               </h2>
               <div className="glass-card rounded-mac-lg p-1">
-                {activeDownloads.map((entry, i) => {
+                {activeDownloads.map((entry) => {
                   const track = trackMap.get(entry.trackId);
                   return (
                     <ActiveDownloadRow
@@ -122,11 +122,11 @@ export function DownloadsPage() {
           {/* ── Failed downloads ─────────────────────────────── */}
           {failedDownloads.length > 0 && (
             <section>
-              <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-3">
+              <h2 className="text-mac-footnote font-semibold text-white/50 uppercase tracking-wider mb-3">
                 Failed ({failedDownloads.length})
               </h2>
               <div className="glass-card rounded-mac-lg p-1">
-                {failedDownloads.map((entry, i) => {
+                {failedDownloads.map((entry) => {
                   const track = trackMap.get(entry.trackId);
                   return (
                     <FailedDownloadRow
@@ -147,11 +147,11 @@ export function DownloadsPage() {
           {/* ── Completed downloads ──────────────────────────── */}
           {completedDownloads.length > 0 && (
             <section>
-              <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-3">
+              <h2 className="text-mac-footnote font-semibold text-white/50 uppercase tracking-wider mb-3">
                 Downloaded ({completedDownloads.length})
               </h2>
               <div className="glass-card rounded-mac-lg p-1">
-                {completedDownloads.map((entry, i) => {
+                {completedDownloads.map((entry) => {
                   const track = trackMap.get(entry.trackId);
                   // Build a fake Track for TrackRow
                   const displayTrack = track ?? {
@@ -189,7 +189,7 @@ export function DownloadsPage() {
                     <TrackRow
                       key={entry.trackId}
                       track={displayTrack}
-                      index={i}
+                      index={completedDownloads.indexOf(entry)}
                       isActive={isCurrent}
                       isPlaying={isCurrent && isPlaying}
                       isDownloaded
@@ -254,14 +254,15 @@ function ActiveDownloadRow({
         <div className="text-sm font-semibold text-white truncate leading-tight">
           {entry.title}
         </div>
-        <div className="text-xs text-white/45 truncate mt-0.5">{entry.artist}</div>
-        {/* Progress bar */}
-        <div className="mt-1.5 h-1 bg-white/[0.08] rounded-full overflow-hidden">
+        <div className="text-xs text-mac-tertiary truncate mt-0.5">{entry.artist}</div>
+        {/* Progress bar — mac-blue with glow */}
+        <div className="mt-1.5 h-1.5 bg-white/[0.08] rounded-full overflow-hidden">
           <div
-            className="h-full bg-mac-blue rounded-full transition-all duration-300"
+            className="h-full bg-mac-blue rounded-full transition-all duration-300 shadow-[0_0_8px_rgba(10,132,255,0.3)]"
             style={{ width: `${pct}%` }}
           />
         </div>
+        <span className="text-[10px] text-mac-quaternary tabular-nums font-mono mt-0.5 inline-block">{pct}%</span>
       </div>
 
       {/* Cancel button */}
@@ -270,7 +271,7 @@ function ActiveDownloadRow({
           e.stopPropagation();
           onCancel();
         }}
-        className="mac-button-ghost p-1.5 rounded-md text-white/45 hover:text-mac-red transition-colors"
+        className="mac-button-ghost p-1.5 rounded-md text-mac-tertiary hover:text-mac-red transition-colors"
         type="button"
         title="Cancel download"
       >
@@ -331,7 +332,7 @@ function FailedDownloadRow({
             e.stopPropagation();
             onRetry();
           }}
-          className="mac-button-ghost p-1.5 rounded-md text-white/45 hover:text-mac-blue transition-colors"
+          className="mac-button-ghost p-1.5 rounded-md text-mac-tertiary hover:text-mac-blue transition-colors"
           type="button"
           title="Retry download"
         >
@@ -345,7 +346,7 @@ function FailedDownloadRow({
             e.stopPropagation();
             onDelete();
           }}
-          className="mac-button-ghost p-1.5 rounded-md text-white/45 hover:text-mac-red transition-colors"
+          className="mac-button-ghost p-1.5 rounded-md text-mac-tertiary hover:text-mac-red transition-colors"
           type="button"
           title="Remove"
         >

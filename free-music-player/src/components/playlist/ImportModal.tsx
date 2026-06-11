@@ -210,7 +210,7 @@ export function ImportModal() {
               initial="hidden"
               animate="visible"
               exit="exit"
-              className="w-full max-w-[480px] glass-popover rounded-mac-xl pointer-events-auto overflow-hidden"
+              className="w-full max-w-[480px] glass-popover rounded-mac-xl pointer-events-auto overflow-hidden noise-texture"
               onClick={(e) => e.stopPropagation()}
             >
               {/* ── Header ─────────────────────────────────── */}

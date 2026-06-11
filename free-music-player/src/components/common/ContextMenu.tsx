@@ -297,7 +297,7 @@ const ContextMenuPanel = forwardRef<
         transformOrigin: `${originX} 0%`,
         zIndex: 9999,
       }}
-      className="min-w-[200px] glass-popover rounded-mac-lg shadow-mac-xl py-1.5"
+      className="min-w-[200px] glass-popover rounded-mac-lg shadow-mac-xl py-1.5 noise-texture"
     >
       {items.map((item, i) => (
         <div key={item.label}>

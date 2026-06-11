@@ -41,12 +41,12 @@ export function AmbientBackground() {
       {currentTrack && (
         <>
           <div
-            className="absolute inset-0 transition-colors duration-[3000ms] ease-out"
+            className="absolute inset-0 transition-colors duration-[4000ms] ease-out"
             style={{ backgroundColor: dominantColor }}
           />
           {/* Secondary accent — radial gradient for depth (single layer) */}
           <div
-            className="absolute inset-0 transition-colors duration-[3000ms] ease-out"
+            className="absolute inset-0 transition-colors duration-[4000ms] ease-out"
             style={{
               background: `radial-gradient(ellipse 80% 60% at 60% 40%, ${accentColor}, transparent)`,
             }}
@@ -80,12 +80,12 @@ export function AmbientBackground() {
         </div>
       )}
 
-      {/* ── Vignette — subtle edge darkening ── */}
+      {/* ── Vignette — stronger edge darkening for depth ── */}
       <div
         className="absolute inset-0"
         style={{
           background: `
-            radial-gradient(ellipse 120% 120% at 50% 50%, transparent 40%, rgba(10, 10, 10, 0.5) 80%, rgba(10, 10, 10, 0.9) 100%)
+            radial-gradient(ellipse 110% 110% at 50% 50%, transparent 35%, rgba(10, 10, 10, 0.55) 65%, rgba(10, 10, 10, 0.92) 100%)
           `,
         }}
       />
