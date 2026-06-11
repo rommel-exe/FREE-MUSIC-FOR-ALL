@@ -129,7 +129,11 @@ function computeTrustScore(result: Pick<SearchResult, 'title' | 'artist' | 'dura
  */
 function computeDurationClosenessScore(duration: number, officialDuration: number): number {
   if (officialDuration <= 0 || duration <= 0) return 0;
-  return Math.abs(duration - officialDuration) === 0 ? 100 : 0;
+  // Round both to integer seconds — YouTube returns float durations (e.g.
+  // 180.3) and getOfficialDuration rounds to integers. Without rounding
+  // here, correct tracks with fractional-second durations get score 0 and
+  // are outranked by wrong tracks at the exact integer.
+  return Math.abs(Math.round(duration) - Math.round(officialDuration)) === 0 ? 100 : 0;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -415,7 +419,7 @@ function filterByExactDuration(
 
   return results.filter(r => {
     if (r.duration <= 0) return false;
-    return Math.abs(r.duration - officialDuration) === 0;
+    return Math.abs(Math.round(r.duration) - Math.round(officialDuration)) === 0;
   });
 }
 

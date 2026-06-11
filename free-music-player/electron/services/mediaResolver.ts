@@ -525,8 +525,9 @@ class MediaResolver {
       }
 
       if (metadata?.expectedDuration && metadata.expectedDuration > 0) {
-        // ZERO tolerance — duration must be EXACTLY identical
-        if (Math.abs(duration - metadata.expectedDuration) !== 0) {
+        // Round both sides to integer seconds — YouTube's yt-dlp duration can
+        // be a float (e.g. 180.3) even for an "exact" match to a 3:00 track.
+        if (Math.abs(Math.round(duration) - Math.round(metadata.expectedDuration)) !== 0) {
           this.storeVerificationFailure(
             videoId,
             'duration_mismatch',
@@ -688,12 +689,14 @@ class MediaResolver {
 
       if (!results || results.length === 0) return null;
 
-      // Helper: check if result duration matches expected EXACTLY (zero tolerance)
+      // Helper: check if result duration matches expected EXACTLY
+      // (integer-second tolerance — round both sides because YouTube can
+      // return float durations like 180.3 for a 3:00 song)
       const durationMatches = (r: any): boolean => {
         if (!expectedDuration) return true;
         const d = r.duration ?? 0;
-        if (!d || d <= 0) return false; // REJECT unknown durations when we have expectedDuration
-        return Math.abs(d - expectedDuration) === 0; // ZERO tolerance — must be exact
+        if (!d || d <= 0) return false;
+        return Math.abs(Math.round(d) - Math.round(expectedDuration)) === 0;
       };
 
       // Rank results by how closely their duration matches the official length.
@@ -701,10 +704,10 @@ class MediaResolver {
       const byDurationCloseness = (results: any[]): any[] => {
         if (!expectedDuration) return results;
         return [...results].sort((a, b) => {
-          const dA = a.duration ?? 0;
-          const dB = b.duration ?? 0;
-          // Both have duration (filtered above), sort by closeness
-          return Math.abs(dA - expectedDuration) - Math.abs(dB - expectedDuration);
+          const dA = Math.round(a.duration ?? 0);
+          const dB = Math.round(b.duration ?? 0);
+          const target = Math.round(expectedDuration);
+          return Math.abs(dA - target) - Math.abs(dB - target);
         });
       };
 
