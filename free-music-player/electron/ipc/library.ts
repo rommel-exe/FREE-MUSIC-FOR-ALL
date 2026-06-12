@@ -94,7 +94,10 @@ export function registerLibraryHandlers(): void {
     const unresolved = db.getTracksWithoutYoutubeIds();
     if (unresolved.length === 0) return { resolved: 0, total: 0 };
 
+    // Preserve track ID alongside the resolve payload so we can
+    // update the correct database record when a match is found.
     const tracks = unresolved.map(t => ({
+      id: t.id,
       title: t.title,
       artist: t.artist,
       duration: t.duration,
@@ -102,11 +105,12 @@ export function registerLibraryHandlers(): void {
       youtubeId: t.youtube_id || undefined,
     }));
 
-    const resolved = await resolveYoutubeIds(tracks);
+    const resolved = await resolveYoutubeIds(tracks as any);
     let count = 0;
     for (const track of resolved) {
-      if (track.youtubeId) {
-        db.updateTrack(track.title, { youtube_id: track.youtubeId, source: 'youtube' } as any);
+      const trackId = (track as any).id;
+      if (track.youtubeId && trackId) {
+        db.updateTrack(trackId, { youtube_id: track.youtubeId, source: 'youtube' });
         count++;
       }
     }

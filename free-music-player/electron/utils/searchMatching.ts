@@ -116,20 +116,21 @@ export function computeTrustScore(
 /**
  * Duration closeness score — BINARY (0 or 100).
  *
- * Exact match (≤1s tolerance, rounded both sides) = 100, anything else = 0.
+ * Exact match (≤2s tolerance, rounded both sides) = 100, anything else = 0.
  * Song length is definitive: if the duration doesn't match, it's the wrong
  * track. Period.
  *
  * Tolerance note: YouTube returns float durations (e.g. 180.3) and
- * getOfficialDuration rounds to integers. We use ≤1s because different
- * platforms (Spotify, YouTube) can report the same track with 1s difference.
+ * getOfficialDuration rounds to integers. We use ≤2s because different
+ * platforms (Spotify, YouTube) can report the same track with 1-2s
+ * difference due to encoding/fade-in/fade-out variances.
  */
 export function computeDurationClosenessScore(
   duration: number,
   officialDuration: number,
 ): number {
   if (officialDuration <= 0 || duration <= 0) return 0;
-  return Math.abs(Math.round(duration) - Math.round(officialDuration)) <= 1
+  return Math.abs(Math.round(duration) - Math.round(officialDuration)) <= 2
     ? 100
     : 0;
 }
@@ -188,7 +189,7 @@ export function getOfficialDuration(
 /**
  * Filter results to ONLY include tracks matching the EXACT official duration.
  *
- * Uses ≤1s tolerance (rounded both sides) — the same binary check as
+ * Uses ≤2s tolerance (rounded both sides) — the same binary check as
  * computeDurationClosenessScore. If no results match, returns an empty
  * array — better to show/play nothing than to serve wrong-duration tracks.
  *
@@ -202,7 +203,7 @@ export function filterByExactDuration<T extends { duration: number }>(
   if (officialDuration <= 0) return results;
   return results.filter((r) => {
     if (r.duration <= 0) return false;
-    return Math.abs(Math.round(r.duration) - Math.round(officialDuration)) <= 1;
+    return Math.abs(Math.round(r.duration) - Math.round(officialDuration)) <= 2;
   });
 }
 
