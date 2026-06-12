@@ -210,7 +210,7 @@ export function ImportModal() {
               initial="hidden"
               animate="visible"
               exit="exit"
-              className="w-full max-w-[480px] glass-popover rounded-mac-xl pointer-events-auto overflow-hidden noise-texture"
+              className="w-full max-w-[480px] glass-popover rounded-radius-xl pointer-events-auto overflow-hidden noise-texture"
               onClick={(e) => e.stopPropagation()}
             >
               {/* ── Header ─────────────────────────────────── */}
@@ -218,8 +218,8 @@ export function ImportModal() {
                 <div className="absolute inset-0 bg-gradient-to-b from-white/[0.04] to-transparent pointer-events-none" />
                 <div className="relative flex items-center justify-between px-5 pt-5 pb-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-mac-blue/20 flex items-center justify-center">
-                      <Music className="w-4 h-4 text-mac-blue" />
+                    <div className="w-8 h-8 rounded-lg bg-emerald/20 flex items-center justify-center">
+                      <Music className="w-4 h-4 text-emerald" />
                     </div>
                     <h2 className="text-mac-headline text-white font-semibold">
                       Import Playlist
@@ -228,7 +228,7 @@ export function ImportModal() {
                   <button
                     onClick={handleClose}
                     disabled={state === 'loading'}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg text-white/40 hover:text-white hover:bg-white/[0.08] active:bg-white/[0.12] transition-all disabled:opacity-30"
+                    className="w-8 h-8 flex items-center justify-center rounded-lg text-groove-300 hover:text-white hover:bg-groove-600 active:bg-groove-500 transition-all disabled:opacity-30"
                   >
                     <X size={16} />
                   </button>
@@ -236,7 +236,7 @@ export function ImportModal() {
               </div>
 
               {/* ── Divider ────────────────────────────────── */}
-              <div className="mx-5 h-px bg-white/[0.06]" />
+              <div className="mx-5 h-px bg-groove-500/30" />
 
               {/* ── Content ────────────────────────────────── */}
               <div className="px-5 pb-5 pt-4">
@@ -251,14 +251,14 @@ export function ImportModal() {
                       exit="hidden"
                       className="space-y-4"
                     >
-                      <p className="text-[13px] text-white/45 leading-relaxed">
+                      <p className="text-[13px] text-groove-300 leading-relaxed">
                         Paste a YouTube or Spotify playlist link. A new playlist
                         will be created in your sidebar.
                       </p>
 
                       {/* URL input */}
                       <div className="relative group">
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25 group-focus-within:text-mac-blue transition-colors">
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-groove-400 group-focus-within:text-emerald transition-colors">
                           <Link size={15} />
                         </div>
                         <input
@@ -268,7 +268,7 @@ export function ImportModal() {
                           onChange={(e) => setUrl(e.target.value)}
                           onKeyDown={handleKeyDown}
                           placeholder="https://open.spotify.com/playlist/..."
-                          className="mac-input pl-9 pr-4"
+                          className="w-full h-10 rounded-radius-lg bg-groove-800 text-groove-100 placeholder-groove-400 text-sm outline-none border border-groove-500/30 focus:border-emerald focus:shadow-emerald-glow transition-all duration-150 pl-9 pr-4"
                         />
                         {source && (
                           <motion.div
@@ -276,7 +276,7 @@ export function ImportModal() {
                             animate={{ opacity: 1, scale: 1 }}
                             className="absolute right-3 top-1/2 -translate-y-1/2"
                           >
-                            <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/[0.08] text-white/40">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-groove-600 text-groove-200">
                               {source}
                             </span>
                           </motion.div>
@@ -288,7 +288,7 @@ export function ImportModal() {
                         <motion.p
                           initial={{ opacity: 0, y: -4 }}
                           animate={{ opacity: 1, y: 0 }}
-                          className="text-[11px] text-red-400/80 font-medium"
+                          className="text-[11px] text-danger/80 font-medium"
                         >
                           Please enter a YouTube or Spotify playlist URL
                         </motion.p>
@@ -296,7 +296,7 @@ export function ImportModal() {
 
                       {/* Optional playlist name */}
                       <div className="relative group">
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25 group-focus-within:text-white/50 transition-colors">
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-groove-400 group-focus-within:text-groove-200 transition-colors">
                           <ListMusic size={15} />
                         </div>
                         <input
@@ -305,7 +305,7 @@ export function ImportModal() {
                           onChange={(e) => setPlaylistName(e.target.value)}
                           onKeyDown={handleKeyDown}
                           placeholder="Playlist name (optional)"
-                          className="mac-input pl-9 pr-4"
+                          className="w-full h-10 rounded-radius-lg bg-groove-800 text-groove-100 placeholder-groove-400 text-sm outline-none border border-groove-500/30 focus:border-emerald focus:shadow-emerald-glow transition-all duration-150 pl-9 pr-4"
                         />
                       </div>
 
@@ -313,14 +313,14 @@ export function ImportModal() {
                       <div className="flex justify-end gap-2 pt-1">
                         <button
                           onClick={handleClose}
-                          className="mac-button-ghost"
+                          className="px-4 py-2 rounded-radius-lg bg-groove-600 hover:bg-groove-500 text-groove-200 text-sm font-semibold transition-all"
                         >
                           Cancel
                         </button>
                         <button
                           onClick={handleImport}
                           disabled={!canImport}
-                          className="mac-button-primary disabled:opacity-30 disabled:cursor-not-allowed gap-2"
+                          className="px-4 py-2 rounded-radius-lg bg-emerald hover:bg-emerald-hover active:bg-emerald-active text-white text-sm font-semibold transition-all disabled:opacity-30 disabled:cursor-not-allowed gap-2 inline-flex items-center"
                         >
                           Import
                           <ArrowRight className="w-3.5 h-3.5" />
@@ -342,16 +342,16 @@ export function ImportModal() {
                       <div className="relative">
                         <Loader2
                           size={40}
-                          className="text-mac-blue/70 animate-spin"
+                          className="text-emerald/70 animate-spin"
                         />
                         {/* Decorative ring */}
-                        <div className="absolute inset-0 rounded-full border-2 border-mac-blue/10 animate-ping" />
+                        <div className="absolute inset-0 rounded-full border-2 border-emerald/10 animate-ping" />
                       </div>
                       <div className="text-center space-y-1.5">
-                        <p className="text-[13px] text-white/70 font-medium">
+                        <p className="text-[13px] text-groove-100 font-medium">
                           {progress}
                         </p>
-                        <p className="text-[11px] text-white/30">
+                        <p className="text-[11px] text-groove-400">
                           This may take a while for large playlists
                         </p>
                       </div>
@@ -378,22 +378,22 @@ export function ImportModal() {
                           damping: 20,
                           delay: 0.1,
                         }}
-                        className="w-14 h-14 rounded-2xl bg-green-500/15 flex items-center justify-center ring-1 ring-green-500/20"
+                        className="w-14 h-14 rounded-2xl bg-emerald-subtle flex items-center justify-center ring-1 ring-emerald/20"
                       >
-                        <Check size={26} className="text-green-400" />
+                        <Check size={26} className="text-emerald" />
                       </motion.div>
 
                       <p className="text-[15px] text-white font-semibold text-center">
                         Imported {result.imported} tracks
                       </p>
-                      <p className="text-[12px] text-white/45 text-center">
+                      <p className="text-[12px] text-groove-300 text-center">
                         to{' '}
-                        <span className="text-white/70 font-medium">
+                        <span className="text-groove-100 font-medium">
                           "{result.playlist.name}"
                         </span>
                       </p>
                       {result.failed > 0 && (
-                        <p className="text-[11px] text-white/35 text-center">
+                        <p className="text-[11px] text-groove-400 text-center">
                           {result.failed} tracks could not be resolved
                         </p>
                       )}
@@ -401,11 +401,14 @@ export function ImportModal() {
                       <div className="flex gap-2 mt-3">
                         <button
                           onClick={handleViewPlaylist}
-                          className="mac-button-primary"
+                          className="px-4 py-2 rounded-radius-lg bg-emerald hover:bg-emerald-hover active:bg-emerald-active text-white text-sm font-semibold transition-all"
                         >
                           View Playlist
                         </button>
-                        <button onClick={handleClose} className="mac-button-ghost">
+                        <button
+                          onClick={handleClose}
+                          className="px-4 py-2 rounded-radius-lg bg-groove-600 hover:bg-groove-500 text-groove-200 text-sm font-semibold transition-all"
+                        >
                           Close
                         </button>
                       </div>

@@ -5,46 +5,43 @@ export default {
   theme: {
     extend: {
       colors: {
-        // macOS 26 dark backgrounds
-        dark: {
-          primary: '#070707',
-          secondary: '#080808',
-          tertiary: '#0D0D0D',
-          quaternary: '#141414',
-          quinary: '#232323',
+        groove: {
+          black: '#141210',
+          900: '#1c1917',
+          800: '#231f1d',
+          700: '#2c2725',
+          600: '#362f2c',
+          500: '#443c38',
+          400: '#5c524c',
+          300: '#8a7e72',
+          200: '#b0a498',
+          100: '#d8cec4',
+          50: '#f5f0eb',
         },
-        // macOS 26 light backgrounds
-        light: {
-          primary: '#FFFFFF',
-          secondary: '#F9F9F9',
-          tertiary: '#F0F0F0',
-          quaternary: '#E8E8E8',
-          quinary: '#DCDCDC',
+        cream: {
+          50: '#fefdfb',
+          100: '#faf8f5',
+          200: '#f5f0eb',
+          300: '#ede8e2',
+          400: '#e0d8cf',
+          500: '#c8bfb4',
+          600: '#9a8e82',
+          700: '#6b6058',
+          800: '#4a4038',
+          900: '#2c2725',
         },
-        // macOS 26 semantic labels
-        label: {
-          dark: {
-            primary: '#F4F4F4',
-            secondary: '#898989',
-            tertiary: '#404040',
-            quaternary: '#252525',
-          },
-          light: {
-            primary: '#1C1C1E',
-            secondary: '#636366',
-            tertiary: '#AEAEB2',
-            quaternary: '#C7C7CC',
-          },
+        emerald: {
+          DEFAULT: '#10B981',
+          hover: '#059669',
+          active: '#047857',
+          glow: 'rgba(16,185,129,0.15)',
+          subtle: 'rgba(16,185,129,0.08)',
         },
-        // Accent blue — dark/light variants
-        accent: {
-          DEFAULT: '#0087FF',
-          hover: '#0070E0',
-          active: '#005BBB',
-          light: '#007AFF',
-          'light-hover': '#0066D6',
-          'light-active': '#0052AD',
+        danger: {
+          DEFAULT: '#ef4444',
+          subtle: 'rgba(239,68,68,0.1)',
         },
+        warning: '#f59e0b',
       },
       fontFamily: {
         sans: ['SF Pro', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
@@ -77,70 +74,43 @@ export default {
         'sidebar': '256px',
       },
       boxShadow: {
-        // Dark mode liquid glass stacks (6-layer)
-        'glass-sidebar-dark': `
-          0 8px 40px rgba(0,0,0,0.12),
-          0 0 8px rgba(0,0,0,0.20),
-          inset -1px -1px 2px rgba(25,25,25,1),
-          inset 1px 1px 2px rgba(25,25,25,1),
-          inset 2px 2px 0.25px rgba(255,255,255,0.7),
-          0 0 2px rgba(0,0,0,0.10)
+        'warm-sm': '0 1px 3px rgba(20,18,16,0.12), 0 1px 2px rgba(20,18,16,0.06)',
+        'warm-md': '0 4px 12px rgba(20,18,16,0.15), 0 2px 4px rgba(20,18,16,0.08)',
+        'warm-lg': '0 8px 24px rgba(20,18,16,0.18), 0 4px 8px rgba(20,18,16,0.10)',
+        'warm-xl': '0 16px 48px rgba(20,18,16,0.22), 0 8px 16px rgba(20,18,16,0.12)',
+        'emerald-glow': '0 0 0 3px rgba(16,185,129,0.25)',
+        'glass-sidebar': `
+          0 8px 40px rgba(20,18,16,0.12),
+          0 0 8px rgba(20,18,16,0.20),
+          inset -1px -1px 2px rgba(28,25,23,1),
+          inset 1px 1px 2px rgba(28,25,23,1),
+          inset 2px 2px 0.25px rgba(245,240,235,0.7),
+          0 0 2px rgba(20,18,16,0.10)
         `,
-        'glass-content-dark': `
-          0 8px 40px rgba(0,0,0,0.12),
-          0 0 8px rgba(0,0,0,0.20),
-          inset -1px -1px 2px rgba(25,25,25,1),
-          inset 1px 1px 2px rgba(25,25,25,1),
-          inset 2px 2px 0.25px rgba(255,255,255,0.5),
-          0 0 2px rgba(0,0,0,0.10)
+        'glass-content': `
+          0 8px 40px rgba(20,18,16,0.12),
+          0 0 8px rgba(20,18,16,0.20),
+          inset -1px -1px 2px rgba(28,25,23,1),
+          inset 1px 1px 2px rgba(28,25,23,1),
+          inset 2px 2px 0.25px rgba(245,240,235,0.5),
+          0 0 2px rgba(20,18,16,0.10)
         `,
-        'glass-floating-dark': `
-          0 8px 40px rgba(0,0,0,0.12),
-          0 0 8px rgba(0,0,0,0.20),
-          inset -1px -1px 2px rgba(25,25,25,1),
-          inset 1px 1px 2px rgba(25,25,25,1),
-          inset 2px 2px 0.25px rgba(255,255,255,0.7),
-          0 0 2px rgba(0,0,0,0.10)
+        'glass-floating': `
+          0 8px 40px rgba(20,18,16,0.12),
+          0 0 8px rgba(20,18,16,0.20),
+          inset -1px -1px 2px rgba(28,25,23,1),
+          inset 1px 1px 2px rgba(28,25,23,1),
+          inset 2px 2px 0.25px rgba(245,240,235,0.7),
+          0 0 2px rgba(20,18,16,0.10)
         `,
-        'glass-popover-dark': `
-          0 16px 48px rgba(0,0,0,0.18),
-          0 0 4px rgba(0,0,0,0.10),
-          0 0 12px rgba(0,0,0,0.08),
-          inset -1px -1px 2px rgba(25,25,25,1),
-          inset 1px 1px 2px rgba(25,25,25,1),
-          inset 2px 2px 0.25px rgba(255,255,255,0.7)
+        'glass-popover': `
+          0 16px 48px rgba(20,18,16,0.18),
+          0 0 4px rgba(20,18,16,0.10),
+          0 0 12px rgba(20,18,16,0.08),
+          inset -1px -1px 2px rgba(28,25,23,1),
+          inset 1px 1px 2px rgba(28,25,23,1),
+          inset 2px 2px 0.25px rgba(245,240,235,0.7)
         `,
-        // Light mode liquid glass stacks
-        'glass-sidebar-light': `
-          0 2px 16px rgba(0,0,0,0.04),
-          0 0 4px rgba(0,0,0,0.03),
-          0 0 0.5px rgba(0,0,0,0.06),
-          inset 0 0.5px 0 rgba(255,255,255,0.6),
-          inset 0 -0.5px 0 rgba(0,0,0,0.02),
-          0 0 1px rgba(0,0,0,0.04)
-        `,
-        'glass-content-light': `
-          0 2px 16px rgba(0,0,0,0.04),
-          0 0 4px rgba(0,0,0,0.03),
-          inset 0 0.5px 0 rgba(255,255,255,0.6),
-          inset 0 -0.5px 0 rgba(0,0,0,0.02),
-          0 0 1px rgba(0,0,0,0.04)
-        `,
-        'glass-floating-light': `
-          0 4px 24px rgba(0,0,0,0.06),
-          0 0 8px rgba(0,0,0,0.03),
-          inset 0 0.5px 0 rgba(255,255,255,0.8),
-          inset 0 -0.5px 0 rgba(0,0,0,0.02),
-          0 0 1px rgba(0,0,0,0.04)
-        `,
-        'glass-popover-light': `
-          0 16px 48px rgba(0,0,0,0.08),
-          0 0 4px rgba(0,0,0,0.04),
-          inset 0 0.5px 0 rgba(255,255,255,0.8),
-          inset 0 -0.5px 0 rgba(0,0,0,0.02),
-          0 0 1px rgba(0,0,0,0.04)
-        `,
-        'focus-ring': '0 0 0 3px rgba(0,135,255,0.3)',
       },
       backdropBlur: {
         'glass': '40px',
@@ -176,8 +146,8 @@ export default {
           'scrollbar-width': 'thin',
           '&::-webkit-scrollbar': { width: '6px', height: '6px' },
           '&::-webkit-scrollbar-track': { background: 'transparent' },
-          '&::-webkit-scrollbar-thumb': { background: 'rgba(120,120,128,0.28)', borderRadius: '3px', border: '1px solid transparent', backgroundClip: 'content-box' },
-          '&::-webkit-scrollbar-thumb:hover': { background: 'rgba(120,120,128,0.48)', backgroundClip: 'content-box' },
+          '&::-webkit-scrollbar-thumb': { background: 'rgba(92,82,76,0.4)', borderRadius: '3px', border: '1px solid transparent', backgroundClip: 'content-box' },
+          '&::-webkit-scrollbar-thumb:hover': { background: 'rgba(92,82,76,0.6)', backgroundClip: 'content-box' },
         },
         '.scrollbar-hide': {
           '-ms-overflow-style': 'none',

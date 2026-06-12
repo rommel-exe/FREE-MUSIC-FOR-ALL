@@ -18,28 +18,16 @@ import { motion } from 'framer-motion';
 import { TrackRow } from '@/components/common/TrackRow';
 
 /* ------------------------------------------------------------------ */
-/*  Deterministic gradient palette                                      */
+/*  Utility functions                                                  */
 /* ------------------------------------------------------------------ */
 
-const GRADIENT_PRESETS = [
-  { from: '#7c3aed', to: '#4f46e5' },
-  { from: '#db2777', to: '#e11d48' },
-  { from: '#14b8a6', to: '#059669' },
-  { from: '#f97316', to: '#dc2626' },
-  { from: '#0ea5e9', to: '#2563eb' },
-  { from: '#d946ef', to: '#9333ea' },
-];
-
-function hashId(id: string): number {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) {
-    h = ((h << 5) - h + id.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h);
-}
-
-function playlistGradient(id: string) {
-  return GRADIENT_PRESETS[hashId(id) % GRADIENT_PRESETS.length];
+function formatTotalDuration(seconds: number): string {
+  if (!seconds || seconds <= 0) return '0 min';
+  const totalMin = Math.floor(seconds / 60);
+  if (totalMin < 60) return `${totalMin} min`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
 function sourceLabel(source?: string): string {
@@ -121,10 +109,11 @@ export function PlaylistPage() {
   }, [playlistTracks]);
 
   /* ── Derived state ─────────────────────────────────────────── */
-  const gradient = selectedPlaylist ? playlistGradient(selectedPlaylist.id) : GRADIENT_PRESETS[0];
-  const gradientBg = `linear-gradient(180deg, ${gradient.from}40 0%, transparent 70%)`;
   const isLikedPlaylist = selectedPlaylist?.id === '__liked__';
   const canReorder = !!selectedPlaylist && !isLikedPlaylist;
+
+  const totalDuration = playlistTracks.reduce((sum, t) => sum + (t.duration || 0), 0);
+  const formattedTotalDuration = formatTotalDuration(totalDuration);
 
   /* ── Drag-and-drop state ───────────────────────────────────── */
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -220,14 +209,11 @@ export function PlaylistPage() {
           animate={{ opacity: 1 }}
           transition={{ duration: 0.25 }}
         >
-          {/* ── Hero section ──────────────────────────────── */}
-          <div
-            className="relative px-6 pt-16 pb-8 drag-region"
-            style={{ background: gradientBg }}
-          >
-            <div className="flex items-end gap-7 no-drag">
+          {/* ── Hero section — centered ──────────────────────── */}
+          <div className="relative px-6 pt-16 pb-8 drag-region">
+            <div className="flex flex-col items-center no-drag">
               {/* Large cover art */}
-              <div className="relative w-56 h-56 rounded-radius-xl overflow-hidden shadow-2xl flex-shrink-0 ring-1 ring-white/[0.08] animate-fade-in">
+              <div className="relative w-64 h-64 rounded-radius-lg overflow-hidden shadow-warm-lg flex-shrink-0 ring-1 ring-groove-600 mb-6 animate-fade-in mx-auto">
                 {selectedPlaylist.thumbnail ? (
                   <img
                     src={selectedPlaylist.thumbnail}
@@ -235,36 +221,31 @@ export function PlaylistPage() {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div
-                    className="w-full h-full flex items-center justify-center"
-                    style={{
-                      background: `linear-gradient(135deg, ${gradient.from}, ${gradient.to})`,
-                    }}
-                  >
-                    <ListMusic className="w-16 h-16 text-white/30" />
+                  <div className="w-full h-full flex items-center justify-center bg-groove-700">
+                    <ListMusic className="w-16 h-16 text-groove-400" />
                   </div>
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-groove-black/50 via-transparent to-transparent" />
               </div>
 
-              {/* Playlist info */}
+              {/* Playlist info — centered */}
               <motion.div
-                className="flex-1 min-w-0 pb-1"
+                className="text-center"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: 0.1 }}
               >
-                <p className="text-mac-caption font-bold uppercase tracking-[0.15em] text-white/50 mb-2">
-                  Playlist
-                </p>
-                <h1 className="text-[40px] font-bold text-white leading-[1.1] tracking-tight mb-3 line-clamp-2">
+                <h1 className="text-mac-hero text-groove-50 tracking-tight mb-2 line-clamp-2">
                   {selectedPlaylist.name}
                 </h1>
-                <p className="text-sm text-white/45">
+                <p className="text-mac-subhead text-groove-300">
                   {playlistTracks.length}{' '}
                   {playlistTracks.length === 1 ? 'song' : 'songs'}
+                  {playlistTracks.length > 0 && (
+                    <span> · {formattedTotalDuration}</span>
+                  )}
                   {selectedPlaylist.source && selectedPlaylist.source !== 'local' && (
-                    <span className="text-white/25"> · {sourceLabel(selectedPlaylist.source)}</span>
+                    <span> · {sourceLabel(selectedPlaylist.source)}</span>
                   )}
                 </p>
               </motion.div>
@@ -274,14 +255,14 @@ export function PlaylistPage() {
           {/* ── Actions bar ───────────────────────────────── */}
           {playlistTracks.length > 0 && (
             <motion.div
-              className="px-6 py-4 flex items-center gap-3"
+              className="px-6 py-4 flex justify-center items-center gap-3"
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.25, delay: 0.15 }}
             >
               <button
                 onClick={() => playTracks(playlistTracks)}
-                className="flex items-center gap-2 rounded-full bg-accent text-white text-mac-body px-6 py-2 hover:bg-accent-hover active:bg-accent-active transition-all duration-150 active:scale-[0.98] shadow-sm"
+                className="flex items-center gap-2 rounded-full bg-emerald text-white text-mac-body px-6 py-2 hover:bg-emerald-hover active:bg-emerald-active transition-all duration-150 active:scale-[0.98] shadow-sm"
                 type="button"
               >
                 <Play className="w-4 h-4 fill-current" />
@@ -292,7 +273,7 @@ export function PlaylistPage() {
                   const shuffled = [...playlistTracks].sort(() => Math.random() - 0.5);
                   playTracks(shuffled);
                 }}
-                className="flex items-center gap-2 rounded-full bg-dark-quinary hover:bg-dark-quinary/80 text-label-dark-primary text-mac-body px-5 py-2 transition-all duration-150 active:scale-[0.98]"
+                className="flex items-center gap-2 rounded-full bg-groove-600 hover:bg-groove-500 text-groove-200 text-mac-body px-5 py-2 transition-all duration-150 active:scale-[0.98]"
                 type="button"
               >
                 <Shuffle className="w-4 h-4" />
@@ -304,32 +285,16 @@ export function PlaylistPage() {
           {/* ── Track list ────────────────────────────────── */}
           {playlistTracks.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 text-center">
-              <div className="w-16 h-16 rounded-full bg-white/[0.04] flex items-center justify-center mb-4 ring-1 ring-white/[0.06]">
-                <Disc3 className="w-7 h-7 text-white/15" />
+              <div className="w-16 h-16 rounded-full bg-groove-700 flex items-center justify-center mb-4 ring-1 ring-groove-600">
+                <Disc3 className="w-7 h-7 text-groove-400" />
               </div>
-              <p className="text-white/45 font-medium text-mac-body">This playlist is empty</p>
-              <p className="text-sm text-white/25 mt-1.5 max-w-xs leading-relaxed">
+              <p className="text-groove-200 font-medium text-mac-body">This playlist is empty</p>
+              <p className="text-sm text-groove-400 mt-1.5 max-w-xs leading-relaxed">
                 Search for music and add tracks to build your collection
               </p>
             </div>
           ) : (
             <div className="px-4 pb-8">
-              {/* Column headers */}
-              <div className="flex items-center gap-3 px-6 py-2 border-b border-white/[0.06] mb-0.5">
-                <span className="w-8 text-mac-caption text-white/30 text-right uppercase tracking-wider font-semibold">
-                  #
-                </span>
-                <span className="w-11 flex-shrink-0" /> {/* thumbnail spacer */}
-                <span className="flex-1 text-mac-caption text-white/30 uppercase tracking-wider font-semibold">
-                  Title
-                </span>
-                <span className="w-14 text-right text-mac-caption text-white/30 uppercase tracking-wider font-semibold">
-                  Time
-                </span>
-                <span className="w-8" /> {/* action spacer */}
-              </div>
-
-              {/* Track rows */}
               {playlistTracks.map((track, i) => {
                 const dlEntry = downloadEntries.get(track.id);
                 const isTrackDownloaded = dlEntry?.status === 'completed' || Boolean(track.path && track.source === 'local');
@@ -374,21 +339,21 @@ export function PlaylistPage() {
         /* ── Empty state — no playlist selected ──────────────── */
         <div className="flex flex-col items-center justify-center h-full text-center px-6">
           <motion.div
-            className="w-20 h-20 rounded-full bg-gradient-to-br from-white/[0.04] to-transparent flex items-center justify-center mb-5 ring-1 ring-white/[0.06]"
+            className="w-20 h-20 rounded-full bg-groove-700 flex items-center justify-center mb-5 ring-1 ring-groove-600"
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.3 }}
           >
-            <Music className="w-8 h-8 text-white/15" />
+            <Music className="w-8 h-8 text-groove-400" />
           </motion.div>
-          <h3 className="text-xl font-semibold text-white/50 mb-2">Select a playlist</h3>
-          <p className="text-sm text-white/25 max-w-xs leading-relaxed">
+          <h3 className="text-mac-title text-groove-100 mb-2">Select a playlist</h3>
+          <p className="text-sm text-groove-400 max-w-xs leading-relaxed">
             Choose a playlist from the dock to see its tracks, or import a playlist from
             YouTube or Spotify.
           </p>
           <button
             onClick={() => setPage('search')}
-            className="mt-6 flex items-center gap-2 rounded-full bg-dark-quinary hover:bg-dark-quinary/80 text-label-dark-primary text-mac-body px-5 py-2 transition-all duration-150 active:scale-[0.98]"
+            className="mt-6 flex items-center gap-2 rounded-full bg-groove-600 hover:bg-groove-500 text-groove-200 text-mac-body px-5 py-2 transition-all duration-150 active:scale-[0.98]"
             type="button"
           >
             <Plus className="w-4 h-4" />

@@ -1,7 +1,7 @@
 import { useLibraryStore } from '@/store/libraryStore';
 import { usePlayerStore } from '@/store/playerStore';
 import { useUIStore } from '@/store/uiStore';
-import { Play, ChevronRight, Heart, Sparkles, Search } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, ChevronRight, Heart, Disc3, Search } from 'lucide-react';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { mediaResolver } from '@/services/mediaResolver';
 import type { Track } from '@/types';
@@ -65,11 +65,11 @@ function ScrollRow({ children, className = '' }: { children: React.ReactNode; cl
       {canScrollLeft && (
         <button
           onClick={() => scroll(-1)}
-          className="absolute left-0 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full glass-floating flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-all duration-150 ease-apple hover:scale-110 active:scale-95 shadow-lg"
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-groove-700 text-groove-200 flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-all duration-150 ease-apple hover:scale-110 hover:bg-groove-600 active:scale-95 shadow-warm-md"
           type="button"
           aria-label="Scroll left"
         >
-          <ChevronRight className="w-4 h-4 text-white/80 rotate-180" />
+          <ChevronRight className="w-4 h-4 rotate-180" />
         </button>
       )}
       <div ref={ref} className="flex gap-3 overflow-x-auto overflow-y-hidden scroll-smooth pb-2 scrollbar-hide overscroll-contain" style={{ scrollbarWidth: 'none' }}>
@@ -78,11 +78,11 @@ function ScrollRow({ children, className = '' }: { children: React.ReactNode; cl
       {canScrollRight && (
         <button
           onClick={() => scroll(1)}
-          className="absolute right-0 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full glass-floating flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-all duration-150 ease-apple hover:scale-110 active:scale-95 shadow-lg"
+          className="absolute right-0 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-groove-700 text-groove-200 flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-all duration-150 ease-apple hover:scale-110 hover:bg-groove-600 active:scale-95 shadow-warm-md"
           type="button"
           aria-label="Scroll right"
         >
-          <ChevronRight className="w-4 h-4 text-white/80" />
+          <ChevronRight className="w-4 h-4" />
         </button>
       )}
     </div>
@@ -90,7 +90,112 @@ function ScrollRow({ children, className = '' }: { children: React.ReactNode; cl
 }
 
 /* ------------------------------------------------------------------ */
-/*  Square card (for Recently Played, Playlists, Jump Back In)         */
+/*  Now Playing Hero                                                   */
+/* ------------------------------------------------------------------ */
+
+function NowPlayingHero() {
+  const currentTrack = usePlayerStore((s) => s.currentTrack);
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const progress = usePlayerStore((s) => s.progress);
+  const duration = usePlayerStore((s) => s.duration);
+  const togglePlay = usePlayerStore((s) => s.togglePlay);
+  const nextTrack = usePlayerStore((s) => s.nextTrack);
+  const previousTrack = usePlayerStore((s) => s.previousTrack);
+  const seek = usePlayerStore((s) => s.seek);
+
+  if (!currentTrack) return null;
+
+  const pct = duration > 0 ? (progress / duration) * 100 : 0;
+
+  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const pct = x / rect.width;
+    seek(pct * duration);
+  };
+
+  return (
+    <div className="mb-8 flex flex-col items-center text-center">
+      {/* Album art */}
+      <div className="w-[200px] h-[200px] rounded-radius-lg shadow-warm-lg overflow-hidden mb-6">
+        {currentTrack.thumbnail ? (
+          <img
+            src={currentTrack.thumbnail}
+            alt={currentTrack.title}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div
+            className="w-full h-full flex items-center justify-center"
+            style={{ background: thumbGradient(currentTrack.id) }}
+          >
+            <span className="text-white/30 font-bold text-4xl select-none">
+              {thumbLetter(currentTrack.title)}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Track info */}
+      <h2 className="text-mac-hero text-groove-50 tracking-tight mb-1 max-w-md truncate">
+        {currentTrack.title}
+      </h2>
+      <p className="text-mac-headline text-groove-300 mb-5 max-w-sm truncate">
+        {currentTrack.artist}
+      </p>
+
+      {/* Progress bar */}
+      <div
+        className="w-full max-w-md h-[3px] bg-groove-600 rounded-full cursor-pointer mb-5 group/progress"
+        onClick={handleProgressClick}
+      >
+        <div
+          className="h-full bg-emerald rounded-full transition-[width] duration-200 relative"
+          style={{ width: `${pct}%` }}
+        >
+          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-emerald opacity-0 group-hover/progress:opacity-100 transition-opacity shadow-warm-sm" />
+        </div>
+      </div>
+
+      {/* Transport controls */}
+      <div className="flex items-center gap-6">
+        <button
+          onClick={previousTrack}
+          className="text-groove-300 hover:text-groove-50 transition-colors active:scale-90"
+          type="button"
+          aria-label="Previous track"
+        >
+          <SkipBack className="w-6 h-6 fill-current" />
+        </button>
+
+        <button
+          onClick={togglePlay}
+          className="w-14 h-14 rounded-full bg-emerald flex items-center justify-center hover:bg-emerald-hover active:bg-emerald-active transition-all shadow-emerald-glow active:scale-95"
+          type="button"
+          aria-label={isPlaying ? 'Pause' : 'Play'}
+        >
+          {isPlaying ? (
+            <Pause className="w-6 h-6 text-white fill-white" />
+          ) : (
+            <Play className="w-6 h-6 text-white fill-white ml-0.5" />
+          )}
+        </button>
+
+        <button
+          onClick={nextTrack}
+          className="text-groove-300 hover:text-groove-50 transition-colors active:scale-90"
+          type="button"
+          aria-label="Next track"
+        >
+          <SkipForward className="w-6 h-6 fill-current" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Square card (for Recently Played, Playlists)                       */
 /* ------------------------------------------------------------------ */
 
 function SquareCard({
@@ -116,12 +221,12 @@ function SquareCard({
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="flex-shrink-0 w-[180px] glass-content rounded-radius-lg p-3 group/card text-left cursor-pointer active:scale-[0.97] transition-all duration-150 ease-apple"
+      className="flex-shrink-0 w-[160px] text-left cursor-pointer active:scale-[0.97] transition-all duration-150 ease-apple group/card"
     >
-      <div className="relative w-full aspect-square rounded-radius-sm overflow-hidden mb-3 shadow-lg">
+      <div className="relative w-[160px] h-[160px] rounded-radius-md overflow-hidden mb-2.5 shadow-warm-sm group-hover/card:shadow-warm-md transition-shadow duration-200 group-hover/card:scale-[1.02]">
         {variant === 'liked' ? (
-          <div className="w-full h-full bg-gradient-to-br from-purple-600 via-pink-500 to-rose-500 flex items-center justify-center">
-            <Heart className="w-10 h-10 text-white fill-white/80" />
+          <div className="w-full h-full bg-gradient-to-br from-groove-600 via-groove-500 to-groove-700 flex items-center justify-center">
+            <Heart className="w-10 h-10 text-emerald fill-emerald/80" />
           </div>
         ) : thumbnail ? (
           <img src={thumbnail} alt="" className="w-full h-full object-cover" loading="lazy" />
@@ -137,12 +242,12 @@ function SquareCard({
 
         {/* Hover play button overlay */}
         <div
-          className={`absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex items-end justify-end p-2.5 transition-all duration-300 ${
+          className={`absolute inset-0 bg-black/20 flex items-center justify-center transition-all duration-200 ${
             hovered ? 'opacity-100' : 'opacity-0'
           }`}
         >
           <div
-            className={`w-12 h-12 rounded-full bg-green-500 text-black flex items-center justify-center shadow-xl shadow-black/40 transition-all duration-150 ease-out ${
+            className={`w-11 h-11 rounded-full bg-emerald text-white flex items-center justify-center shadow-warm-lg transition-all duration-150 ease-out ${
               hovered ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-2 opacity-0 scale-90'
             }`}
           >
@@ -151,25 +256,27 @@ function SquareCard({
         </div>
       </div>
 
-      <div className="min-w-0">
-        <div className="text-sm font-semibold text-white truncate leading-snug">{title}</div>
-        {subtitle && <div className="text-xs text-label-dark-tertiary truncate mt-1">{subtitle}</div>}
+      <div className="min-w-0 px-0.5">
+        <div className="text-sm font-semibold text-groove-100 truncate leading-snug">{title}</div>
+        {subtitle && <div className="text-xs text-groove-300 truncate mt-0.5">{subtitle}</div>}
       </div>
     </button>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/*  Top Song row (horizontal, with thumbnail)                          */
+/*  Top Song row (clean numbered list)                                 */
 /* ------------------------------------------------------------------ */
 
 function TopSongRow({
   track,
   index,
+  isActive,
   onPlay,
 }: {
   track: Track;
   index: number;
+  isActive: boolean;
   onPlay: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
@@ -179,19 +286,25 @@ function TopSongRow({
       onClick={onPlay}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="w-full flex items-center gap-4 px-3 py-2.5 rounded-radius-sm hover:bg-white/[0.04] transition-all duration-150 ease-apple group"
+      className={`w-full flex items-center gap-4 px-3 py-2.5 rounded-radius-sm transition-all duration-150 ease-apple group ${
+        isActive
+          ? 'bg-emerald-subtle'
+          : 'hover:bg-groove-700'
+      }`}
     >
       {/* Number / Play icon */}
-      <span className="w-7 text-center text-sm tabular-nums shrink-0 font-mono">
+      <span className={`w-7 text-center text-sm tabular-nums shrink-0 font-mono ${
+        isActive ? 'text-emerald' : hovered ? 'text-emerald' : 'text-groove-400'
+      }`}>
         {hovered ? (
-          <Play className="w-4 h-4 text-green-500 inline fill-green-500" />
+          <Play className="w-4 h-4 inline fill-current" />
         ) : (
-          <span className="text-label-dark-quaternary">{index + 1}</span>
+          index + 1
         )}
       </span>
 
       {/* Thumbnail (48px) */}
-      <div className="w-12 h-12 rounded-radius-sm bg-white/10 flex-shrink-0 overflow-hidden shadow-sm shadow-black/20">
+      <div className="w-12 h-12 rounded-radius-sm bg-groove-700 flex-shrink-0 overflow-hidden shadow-sm">
         {track.thumbnail ? (
           <img src={track.thumbnail} alt="" className="w-full h-full object-cover" />
         ) : (
@@ -203,12 +316,14 @@ function TopSongRow({
 
       {/* Title + Artist */}
       <div className="flex-1 min-w-0 text-left">
-        <div className="text-sm font-medium text-white truncate leading-snug">{track.title}</div>
-        <div className="text-xs text-label-dark-tertiary truncate">{track.artist}</div>
+        <div className={`text-sm font-medium truncate leading-snug ${isActive ? 'text-emerald' : 'text-groove-100'}`}>
+          {track.title}
+        </div>
+        <div className="text-xs text-groove-300 truncate">{track.artist}</div>
       </div>
 
       {/* Play count */}
-      <span className="text-xs text-label-dark-quaternary tabular-nums shrink-0 font-mono">
+      <span className="text-xs text-groove-400 tabular-nums shrink-0 font-mono">
         {track.playCount.toLocaleString()} plays
       </span>
     </button>
@@ -222,9 +337,9 @@ function TopSongRow({
 function SectionHeader({ title, showAll, onShowAll }: { title: string; showAll?: boolean; onShowAll?: () => void }) {
   return (
     <div className="flex items-center justify-between mb-4">
-      <h2 className="text-mac-title text-white tracking-tight">{title}</h2>
+      <h2 className="text-mac-title text-groove-50 tracking-tight">{title}</h2>
       {showAll && (
-        <button onClick={onShowAll} className="flex items-center gap-2 rounded-radius-sm hover:bg-white/[0.06] px-2 py-1.5 transition-all duration-150 text-mac-caption uppercase tracking-widest font-semibold hover:text-white/80" type="button">
+        <button onClick={onShowAll} className="flex items-center gap-2 rounded-radius-sm hover:bg-groove-700 px-2 py-1.5 transition-all duration-150 text-mac-caption uppercase tracking-widest font-semibold text-groove-300 hover:text-groove-100" type="button">
           Show all
         </button>
       )}
@@ -241,6 +356,7 @@ export function HomePage() {
   const playlists = useLibraryStore((s) => s.playlists);
   const recentlyPlayed = useLibraryStore((s) => s.recentlyPlayed);
   const playTracks = usePlayerStore((s) => s.playTracks);
+  const currentTrack = usePlayerStore((s) => s.currentTrack);
   const setPage = useUIStore((s) => s.setPage);
   const setSelectedPlaylistId = useUIStore((s) => s.setSelectedPlaylistId);
 
@@ -280,140 +396,118 @@ export function HomePage() {
 
   return (
     <div className="h-full overflow-y-auto overscroll-contain relative z-10 pb-32">
-      {/* ── Gradient hero background ── */}
-      <div className="absolute inset-0 pointer-events-none z-0">
-        <div className="absolute top-0 left-0 right-0 h-[420px] bg-gradient-to-b from-[#2a1545]/50 via-[#1a0f30]/30 to-transparent" />
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-accent/5 rounded-full blur-[120px]" />
-        <div className="absolute top-20 right-1/4 w-72 h-72 bg-mac-purple/5 rounded-full blur-[100px]" />
-      </div>
-
       {/* ── Header ── */}
       <div className="relative z-10 px-6 pt-14 pb-2 drag-region">
-        <h1 className="text-mac-hero text-white/90 tracking-tight no-drag">
+        <h1 className="text-mac-hero text-groove-50 tracking-tight no-drag">
           Listen Now
         </h1>
-        <p className="text-mac-subhead text-white/30 mt-1 no-drag">
+        <p className="text-mac-subhead text-groove-400 mt-1 no-drag">
           Discover your next favorite track
         </p>
       </div>
 
-      {/* ── Main content (CSS entrance animation) ── */}
+      {/* ── Main content ── */}
       <div className="relative z-10 px-6 animate-fade-in">
-        {/* ── Quick-play grid (2x3) ── */}
-        {recentTracks.length > 0 && (
-          <div className="mb-8">
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5">
-              {recentTracks.slice(0, 6).map((track, i) => (
-                <button
-                  key={track.id}
-                  onClick={() => playTracks(recentTracks, i)}
-                  className="flex items-center gap-0 glass-content rounded-radius-sm overflow-hidden h-[52px] group/quick hover:bg-white/[0.08] active:scale-[0.98] transition-all duration-150 ease-apple"
-                  style={{ animationDelay: `${i * 50}ms` }}
-                >
-                  <div className="w-13 h-13 flex-shrink-0 overflow-hidden shadow-sm shadow-black/20">
-                    {track.thumbnail ? (
-                      <img src={track.thumbnail} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center" style={{ background: thumbGradient(track.id) }}>
-                        <span className="text-white/30 font-bold text-lg select-none">{thumbLetter(track.title)}</span>
-                      </div>
-                    )}
-                  </div>
-                  <span className="flex-1 px-3.5 text-sm font-semibold text-white truncate text-left">
-                    {track.title}
-                  </span>
-                  <div className="pr-3 opacity-0 group-hover/quick:opacity-100 transition-all duration-150 ease-apple group-hover/quick:translate-x-0 -translate-x-1">
-                    <div className="w-9 h-9 rounded-full bg-green-500 text-black flex items-center justify-center shadow-lg shadow-black/30">
-                      <Play className="w-4 h-4 fill-current ml-0.5" />
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* ── Now Playing Hero ── */}
+        {currentTrack && <NowPlayingHero />}
 
         {/* ── Sections ── */}
         <div className="space-y-8 pb-8">
-          {/* Recently Played */}
+          {/* Recently Played → 4-column grid */}
           {recentTracks.length > 0 && (
             <section>
               <SectionHeader title="Recently played" />
-              <ScrollRow>
-                {recentTracks.map((track, i) => (
-                  <SquareCard
+              <div className="grid grid-cols-4 gap-3">
+                {recentTracks.slice(0, 8).map((track, i) => (
+                  <button
                     key={track.id}
-                    thumbnail={track.thumbnail}
-                    title={track.title}
-                    subtitle={track.artist}
                     onClick={() => playTracks(recentTracks, i)}
-                    onPlay={() => playTracks(recentTracks, i)}
-                  />
+                    className="group/card"
+                  >
+                    <div className="relative w-full aspect-square rounded-radius-md overflow-hidden mb-2 shadow-warm-sm group-hover/card:shadow-warm-md transition-all duration-200 group-hover/card:scale-[1.02]">
+                      {track.thumbnail ? (
+                        <img src={track.thumbnail} alt="" className="w-full h-full object-cover" loading="lazy" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center" style={{ background: thumbGradient(track.id) }}>
+                          <span className="text-white/30 font-bold text-2xl select-none">{thumbLetter(track.title)}</span>
+                        </div>
+                      )}
+
+                      {/* Hover play overlay */}
+                      <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover/card:opacity-100 transition-opacity duration-200">
+                        <div className="w-11 h-11 rounded-full bg-emerald text-white flex items-center justify-center shadow-warm-lg translate-y-2 group-hover/card:translate-y-0 opacity-0 group-hover/card:opacity-100 transition-all duration-200">
+                          <Play className="w-5 h-5 fill-current ml-0.5" />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="min-w-0 px-0.5">
+                      <div className="text-sm font-semibold text-groove-100 truncate leading-snug">{track.title}</div>
+                      <div className="text-xs text-groove-300 truncate mt-0.5">{track.artist}</div>
+                    </div>
+                  </button>
                 ))}
-              </ScrollRow>
+              </div>
             </section>
           )}
 
-          {/* Your Playlists */}
+          {/* Your Playlists → Horizontal scroll with larger cards */}
           {playlists.length > 0 && (
             <section>
               <SectionHeader title="Your playlists" showAll onShowAll={() => setPage('library')} />
               <ScrollRow>
-                <SquareCard
-                  title="Liked Songs"
-                  subtitle={`${tracks.filter((t) => t.isFavorite).length} songs`}
-                  variant="liked"
+                <button
+                  className="flex-shrink-0 text-left cursor-pointer active:scale-[0.97] transition-all duration-150 ease-apple group/card"
                   onClick={() => {
                     setSelectedPlaylistId('__liked__');
                     setPage('playlist');
                   }}
-                />
+                >
+                  <div className="w-[120px] h-[120px] rounded-radius-md overflow-hidden mb-2 shadow-warm-sm group-hover/card:shadow-warm-md transition-shadow duration-200">
+                    <div className="w-full h-full bg-gradient-to-br from-groove-600 via-groove-500 to-groove-700 flex items-center justify-center">
+                      <Heart className="w-8 h-8 text-emerald fill-emerald/80" />
+                    </div>
+                  </div>
+                  <div className="text-sm font-semibold text-groove-100 truncate max-w-[120px]">Liked Songs</div>
+                  <div className="text-xs text-groove-300 truncate max-w-[120px]">{tracks.filter((t) => t.isFavorite).length} songs</div>
+                </button>
+
                 {playlists.map((pl) => (
-                  <SquareCard
+                  <button
                     key={pl.id}
-                    thumbnail={pl.thumbnail}
-                    title={pl.name}
-                    subtitle={`${pl.trackCount ?? 0} songs`}
-                    gradient={playlistGradient(pl.id)}
+                    className="flex-shrink-0 text-left cursor-pointer active:scale-[0.97] transition-all duration-150 ease-apple group/card"
                     onClick={() => {
                       setSelectedPlaylistId(pl.id);
                       setPage('playlist');
                     }}
-                  />
+                  >
+                    <div className="w-[120px] h-[120px] rounded-radius-md overflow-hidden mb-2 shadow-warm-sm group-hover/card:shadow-warm-md transition-shadow duration-200">
+                      {pl.thumbnail ? (
+                        <img src={pl.thumbnail} alt="" className="w-full h-full object-cover" loading="lazy" />
+                      ) : (
+                        <div className={`w-full h-full bg-gradient-to-br ${playlistGradient(pl.id)} flex items-center justify-center`}>
+                          <span className="text-white/40 font-bold text-xl select-none">{thumbLetter(pl.name)}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-sm font-semibold text-groove-100 truncate max-w-[120px]">{pl.name}</div>
+                    <div className="text-xs text-groove-300 truncate max-w-[120px]">{pl.trackCount ?? 0} songs</div>
+                  </button>
                 ))}
               </ScrollRow>
             </section>
           )}
 
-          {/* Jump Back In */}
-          {jumpBackTracks.length > 0 && (
-            <section>
-              <SectionHeader title="Jump back in" />
-              <ScrollRow>
-                {jumpBackTracks.map((track, i) => (
-                  <SquareCard
-                    key={`jb-${track.id}`}
-                    thumbnail={track.thumbnail}
-                    title={track.title}
-                    subtitle={track.artist}
-                    onClick={() => playTracks(jumpBackTracks, i)}
-                    onPlay={() => playTracks(jumpBackTracks, i)}
-                  />
-                ))}
-              </ScrollRow>
-            </section>
-          )}
-
-          {/* Your Top Songs */}
+          {/* Your Top Songs → Clean numbered list */}
           {topTracks.length > 0 && (
             <section>
               <SectionHeader title="Your top songs" />
-              <div className="glass-content rounded-radius-lg p-2">
+              <div className="space-y-0.5">
                 {topTracks.map((track, i) => (
                   <TopSongRow
                     key={track.id}
                     track={track}
                     index={i}
+                    isActive={currentTrack?.id === track.id}
                     onPlay={() => playTracks(topTracks, i)}
                   />
                 ))}
@@ -425,20 +519,20 @@ export function HomePage() {
           {isEmpty && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <div className="relative mb-8">
-                <div className="w-28 h-28 rounded-radius-xl bg-gradient-to-br from-accent/20 via-mac-purple/20 to-green-500/10 flex items-center justify-center border border-white/[0.06]">
-                  <Sparkles className="w-12 h-12 text-accent/60" />
+                <div className="w-28 h-28 rounded-radius-xl bg-groove-700 flex items-center justify-center border border-groove-600/50">
+                  <Disc3 className="w-12 h-12 text-groove-400" />
                 </div>
-                <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center">
-                  <Play className="w-3 h-3 text-green-500 fill-green-500" />
+                <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-emerald/20 flex items-center justify-center">
+                  <Play className="w-3 h-3 text-emerald fill-emerald" />
                 </div>
               </div>
-              <h2 className="text-mac-headline text-white mb-2">Start listening</h2>
-              <p className="text-mac-body text-label-dark-tertiary mb-8 max-w-xs leading-relaxed">
+              <h2 className="text-mac-headline text-groove-100 mb-2">Start listening</h2>
+              <p className="text-mac-body text-groove-300 mb-8 max-w-xs leading-relaxed">
                 Search for songs to build your library and discover new music you&apos;ll love
               </p>
               <button
                 onClick={() => setPage('search')}
-                className="flex items-center gap-2 rounded-full bg-accent text-white text-sm font-semibold px-8 py-3 hover:bg-accent-hover active:bg-accent-active transition-all duration-150 shadow-sm active:scale-[0.97]"
+                className="flex items-center gap-2 rounded-full bg-emerald text-white text-sm font-semibold px-8 py-3 hover:bg-emerald-hover active:bg-emerald-active transition-all duration-150 shadow-emerald-glow active:scale-[0.97]"
               >
                 <Search className="w-4 h-4" />
                 Search Music

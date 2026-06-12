@@ -4,7 +4,7 @@ import { useLyrics } from '@/hooks/useLyrics';
 import { usePlayerStore } from '@/store/playerStore';
 import { useUIStore } from '@/store/uiStore';
 import type { LyricLine as LyricLineData } from '@/hooks/useLyrics';
-import { X, RefreshCw, Music, AlertCircle } from 'lucide-react';
+import { RefreshCw, Music, AlertCircle } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
 /*  Offset Nudge Button                                                 */
@@ -22,7 +22,7 @@ const NudgeBtn = memo(function NudgeBtn({
   return (
     <button
       onClick={handleClick}
-      className="px-2 py-0.5 text-[10px] font-semibold text-white/35 hover:text-white hover:bg-white/[0.1] rounded-md transition-all duration-150 active:scale-95"
+      className="px-2 py-0.5 text-[10px] font-semibold text-groove-200 hover:text-groove-50 bg-groove-600 rounded-md transition-all duration-150 active:scale-95"
       type="button"
       title={delta > 0 ? `Shift lyrics +${delta}s` : `Shift lyrics ${delta}s`}
     >
@@ -55,16 +55,16 @@ const LyricLineView = memo(function LyricLineView({
 
   const stateClasses = synced
     ? isActive
-      ? 'text-white text-xl font-bold scale-[1.02] drop-shadow-[0_0_12px_rgba(255,255,255,0.15)]'
+      ? 'text-groove-50 text-mac-title font-bold scale-[1.02] drop-shadow-[0_0_8px_rgba(16,185,129,0.3)]'
       : isPast
-        ? 'text-white/20 text-lg'
-        : 'text-white/50 text-lg'
-    : 'text-white/65 text-lg';
+        ? 'text-groove-400 text-mac-body'
+        : 'text-groove-200 text-mac-body'
+    : 'text-groove-200 text-mac-body';
 
   return (
     <div
       className={`${baseClasses} ${stateClasses} ${
-        isActive ? 'bg-white/[0.03]' : 'hover:bg-white/[0.02]'
+        isActive ? 'bg-emerald-subtle' : 'hover:bg-groove-700/50'
       }`}
       onClick={() => onSyncTap(line.time)}
     >
@@ -86,7 +86,6 @@ export const LyricsPanel = memo(function LyricsPanel() {
   const setLyricsOffset = usePlayerStore((s) => s.setLyricsOffset);
   const resetLyricsOffset = usePlayerStore((s) => s.resetLyricsOffset);
   const isLyricsOpen = useUIStore((s) => s.isLyricsOpen);
-  const toggleLyrics = useUIStore((s) => s.toggleLyrics);
 
   const { lyrics, loading, error } = useLyrics(title, artist);
 
@@ -149,48 +148,18 @@ export const LyricsPanel = memo(function LyricsPanel() {
       animate={{ width: 320, opacity: 1 }}
       exit={{ width: 0, opacity: 0 }}
       transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] as const }}
-      className="glass-sidebar border-l border-white/[0.06] flex flex-col h-full overflow-hidden"
+      className="bg-groove-900 glass-sidebar border-l border-groove-700 flex flex-col h-full overflow-hidden"
     >
       <div className="w-80 flex flex-col h-full">
         {/* ── Header ─────────────────────────────────────────── */}
         <div className="drag-region">
-          <div className="relative flex items-center justify-between p-4 pb-3 no-drag">
+          <div className="relative flex items-center p-4 pb-3 no-drag">
             {/* Subtle gradient behind header */}
-            <div className="absolute inset-0 h-20 bg-gradient-to-b from-white/[0.03] to-transparent pointer-events-none" />
+            <div className="absolute inset-0 h-20 bg-gradient-to-b from-groove-700/20 to-transparent pointer-events-none" />
 
             <div className="relative flex items-center gap-3">
-              <h2 className="text-mac-headline text-white font-semibold">Lyrics</h2>
-
-              {/* Sync offset nudge controls */}
-              {lyrics?.synced && (
-                <div className="relative flex items-center gap-0.5">
-                  <NudgeBtn delta={-1} label="−1" />
-                  <NudgeBtn delta={-0.25} label="−¼" />
-                  <NudgeBtn delta={0.25} label="+¼" />
-                  <NudgeBtn delta={1} label="+1" />
-
-                  {offsetActive && (
-                    <button
-                      onClick={resetLyricsOffset}
-                      className="ml-0.5 p-1 text-white/30 hover:text-white hover:bg-white/[0.08] rounded-md transition-all duration-150 active:scale-95"
-                      type="button"
-                      title="Reset sync"
-                    >
-                      <RefreshCw className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-              )}
+              <h2 className="text-mac-headline text-groove-50 font-semibold">Lyrics</h2>
             </div>
-
-            <button
-              onClick={toggleLyrics}
-              className="relative p-1.5 -mr-1 rounded-radius-sm text-white/40 hover:text-white hover:bg-white/[0.08] active:bg-white/[0.12] transition-all duration-150"
-              type="button"
-              title="Close lyrics"
-            >
-              <X className="w-4 h-4" />
-            </button>
           </div>
         </div>
 
@@ -204,17 +173,17 @@ export const LyricsPanel = memo(function LyricsPanel() {
               transition={{ duration: 0.2 }}
               className="overflow-hidden"
             >
-              <div className="mx-3 mb-3 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-green-500/[0.08] border border-green-500/[0.12]">
-                <p className="text-[11px] text-green-400/70 font-medium">
+              <div className="mx-3 mb-3 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-emerald-subtle border border-emerald/20">
+                <p className="text-[11px] text-emerald/70 font-medium">
                   Tap a line to re-sync
                 </p>
-                <span className="text-[10px] font-mono tabular-nums text-green-400/50 font-semibold">
+                <span className="text-[10px] font-mono tabular-nums text-emerald/50 font-semibold">
                   {lyricsOffset > 0 ? '+' : ''}
                   {lyricsOffset.toFixed(2)}s
                 </span>
                 <button
                   onClick={resetLyricsOffset}
-                  className="text-[10px] text-green-400/50 hover:text-green-400 transition-colors font-medium"
+                  className="text-[10px] text-emerald/50 hover:text-emerald transition-colors font-medium"
                   type="button"
                 >
                   Reset
@@ -236,8 +205,8 @@ export const LyricsPanel = memo(function LyricsPanel() {
               animate={{ opacity: 1 }}
               className="flex flex-col items-center justify-center py-16 gap-3"
             >
-              <div className="w-8 h-8 border-2 border-white/15 border-t-white/60 rounded-full animate-spin" />
-              <p className="text-[11px] text-white/25 font-medium">Loading lyrics...</p>
+              <div className="w-8 h-8 border-2 border-groove-600 border-t-groove-200 rounded-full animate-spin" />
+              <p className="text-[11px] text-groove-400 font-medium">Loading lyrics...</p>
             </motion.div>
           )}
 
@@ -249,10 +218,10 @@ export const LyricsPanel = memo(function LyricsPanel() {
               transition={{ duration: 0.3 }}
               className="flex flex-col items-center justify-center py-16 gap-3 text-center"
             >
-              <div className="w-14 h-14 rounded-2xl bg-white/[0.04] flex items-center justify-center ring-1 ring-white/[0.06]">
-                <AlertCircle className="w-6 h-6 text-white/15" />
+              <div className="w-14 h-14 rounded-2xl bg-groove-800 flex items-center justify-center ring-1 ring-groove-700">
+                <AlertCircle className="w-6 h-6 text-groove-400" />
               </div>
-              <p className="text-mac-body text-white/30 font-medium">{error}</p>
+              <p className="text-mac-body text-groove-300 font-medium">{error}</p>
             </motion.div>
           )}
 
@@ -282,15 +251,36 @@ export const LyricsPanel = memo(function LyricsPanel() {
               transition={{ duration: 0.3, delay: 0.1 }}
               className="flex flex-col items-center justify-center py-16 gap-3"
             >
-              <div className="w-14 h-14 rounded-2xl bg-white/[0.04] flex items-center justify-center ring-1 ring-white/[0.06]">
-                <Music className="w-6 h-6 text-white/15" />
+              <div className="w-14 h-14 rounded-2xl bg-groove-800 flex items-center justify-center ring-1 ring-groove-700">
+                <Music className="w-6 h-6 text-groove-400" />
               </div>
-              <p className="text-mac-body text-white/30 font-medium">
+              <p className="text-mac-body text-groove-300 font-medium">
                 No lyrics available
               </p>
             </motion.div>
           )}
         </div>
+
+        {/* ── Nudge controls — bottom of panel ──────────────── */}
+        {lyrics?.synced && (
+          <div className="px-4 py-3 border-t border-groove-700 flex items-center justify-center gap-1">
+            <NudgeBtn delta={-1} label="-1s" />
+            <NudgeBtn delta={-0.25} label="-0.25s" />
+            <NudgeBtn delta={0.25} label="+0.25s" />
+            <NudgeBtn delta={1} label="+1s" />
+
+            {offsetActive && (
+              <button
+                onClick={resetLyricsOffset}
+                className="ml-1 p-1 text-groove-400 hover:text-emerald hover:bg-emerald-subtle rounded-md transition-all duration-150 active:scale-95"
+                type="button"
+                title="Reset sync"
+              >
+                <RefreshCw className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </motion.div>
   );

@@ -297,7 +297,7 @@ const ContextMenuPanel = forwardRef<
         transformOrigin: `${originX} 0%`,
         zIndex: 9999,
       }}
-      className="min-w-[200px] glass-popover rounded-radius-lg shadow-mac-xl py-1.5"
+      className="min-w-[200px] glass-popover rounded-radius-lg shadow-warm-lg py-1.5"
     >
       {items.map((item, i) => (
         <div key={item.label}>
@@ -314,24 +314,24 @@ const ContextMenuPanel = forwardRef<
             tabIndex={-1}
             aria-disabled={item.disabled}
             className={`
-              w-full flex items-center h-8 px-2.5 gap-2.5 text-[13px] text-left
+              w-full group flex items-center h-8 px-2.5 gap-2.5 text-[13px] text-left
               rounded-radius-sm mx-0.5
               transition-all duration-100 ease-out
               ${item.disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-default'}
               ${
                 !item.disabled && item.danger
-                  ? 'text-red-500 hover:bg-red-500/10'
+                  ? 'text-danger hover:bg-danger-subtle'
                   : !item.disabled
-                    ? 'text-white/80 hover:text-white hover:bg-white/[0.06]'
-                    : 'text-white/40'
+                    ? 'text-groove-200 hover:text-groove-50 hover:bg-groove-600'
+                    : 'text-groove-400'
               }
-              ${focusedIndex === i ? (item.danger ? 'bg-red-500/10 text-red-500' : 'bg-white/[0.06] text-white') : ''}
+              ${focusedIndex === i ? (item.danger ? 'bg-danger-subtle text-danger' : 'bg-groove-600 text-groove-50') : ''}
             `}
           >
             {/* Icon slot — fixed width for alignment */}
             <span className="flex-shrink-0 w-5 h-5 flex items-center justify-center">
               {item.icon ? (
-                <span className="[&>svg]:w-4 [&>svg]:h-4 [&>svg]:text-label-dark-tertiary">
+                <span className="[&>svg]:w-4 [&>svg]:h-4 [&>svg]:text-groove-400 group-hover:[&>svg]:text-groove-200">
                   {item.icon}
                 </span>
               ) : null}
@@ -339,7 +339,7 @@ const ContextMenuPanel = forwardRef<
             <span className="truncate flex-1">{item.label}</span>
           </button>
           {item.separatorAfter && (
-            <div className="h-px bg-white/[0.06] my-1 mx-3" />
+            <div className="h-px bg-groove-500/30 my-1 mx-3" />
           )}
         </div>
       ))}
@@ -356,7 +356,7 @@ function DefaultMoreIcon() {
   return (
     <MoreHorizontal
       size={16}
-      className="text-white/50 transition-colors group-hover:text-white/70"
+      className="text-groove-400 transition-colors group-hover:text-groove-200"
       aria-hidden="true"
     />
   );

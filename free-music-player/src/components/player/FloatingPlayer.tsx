@@ -6,7 +6,7 @@ import { useLibraryStore } from '@/store/libraryStore';
 import type { Track } from '@/types';
 import {
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1,
-  Volume2, VolumeX, Volume1, Heart, ListMusic, Music, Mic2, Maximize2,
+  Volume2, VolumeX, Volume1, Heart, ListMusic, Music, Mic2,
   Download, Check, Loader2
 } from 'lucide-react';
 import { useDownloadStore } from '@/store/downloadStore';
@@ -60,7 +60,7 @@ function useSliderDrag(
 
 const Equalizer = memo(function Equalizer() {
   return (
-    <div className="flex items-end gap-[2px] h-3.5 text-accent">
+    <div className="flex items-end gap-[2px] h-3.5 text-emerald">
       <motion.span
         className="w-[3px] rounded-full bg-current"
         animate={{ height: ['30%', '100%', '50%', '80%', '30%'] }}
@@ -101,7 +101,7 @@ const VolumeSlider = memo(function VolumeSlider({
   return (
     <div
       ref={trackRef}
-      className="w-16 h-1.5 bg-white/15 rounded-full relative touch-none cursor-pointer group/vol"
+      className="w-16 h-1.5 bg-groove-600 rounded-full relative touch-none cursor-pointer group/vol"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -114,14 +114,14 @@ const VolumeSlider = memo(function VolumeSlider({
     >
       {/* Fill */}
       <div
-        className="h-full bg-accent rounded-full relative transition-[width] duration-100"
+        className="h-full bg-emerald rounded-full relative transition-[width] duration-100"
         style={{ width: `${percent}%` }}
       >
         {/* Thumb */}
-        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-md scale-0 group-hover/vol:scale-100 transition-transform duration-200" />
+        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-groove-50 rounded-full shadow-md scale-0 group-hover/vol:scale-100 transition-transform duration-200" />
       </div>
       {/* Track highlight on hover */}
-      <div className="absolute inset-0 rounded-full bg-white/5 opacity-0 group-hover/vol:opacity-100 transition-opacity" />
+      <div className="absolute inset-0 rounded-full bg-groove-500/20 opacity-0 group-hover/vol:opacity-100 transition-opacity" />
     </div>
   );
 });
@@ -151,17 +151,17 @@ const CtrlButton = memo(function CtrlButton({
         relative w-8 h-8 rounded-full flex items-center justify-center
         transition-all duration-apple ease-apple
         ${active
-          ? 'text-accent'
-          : 'text-white/60 hover:text-white'
+          ? 'text-emerald'
+          : 'text-groove-300 hover:text-groove-100'
         }
-        ${accent && active ? 'bg-white/10' : ''}
-        hover:bg-white/10 active:scale-90
+        ${accent && active ? 'bg-emerald-subtle' : ''}
+        hover:bg-groove-700 active:scale-90
         ${className}
       `}
     >
       {children}
       {active && (
-        <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent shadow-[0_0_4px_rgba(0,135,255,0.4)]" />
+        <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-emerald shadow-emerald-glow" />
       )}
     </button>
   );
@@ -181,11 +181,11 @@ const PlayButton = memo(function PlayButton({
       onClick={onClick}
       aria-label={isPlaying ? 'Pause' : 'Play'}
       className="
-        w-9 h-9 rounded-full bg-white text-black
+        w-9 h-9 rounded-full bg-emerald text-white
         flex items-center justify-center
-        hover:scale-105 active:scale-95
+        hover:bg-emerald-hover active:scale-95
         transition-all duration-apple ease-apple
-        shadow-lg shadow-white/10
+        shadow-emerald-glow
       "
     >
       {isPlaying ? (
@@ -238,9 +238,9 @@ const DownloadBtn = memo(function DownloadBtn({ track }: { track: Track }) {
       className={isDownloading ? 'pointer-events-auto' : ''}
     >
       {isDownloading ? (
-        <Loader2 className="w-4 h-4 animate-spin text-accent" />
+        <Loader2 className="w-4 h-4 animate-spin text-emerald" />
       ) : isDownloaded ? (
-        <Check className="w-4 h-4 text-green-500 fill-current" />
+        <Check className="w-4 h-4 text-emerald fill-current" />
       ) : (
         <Download className={`w-4 h-4 ${disabled ? 'opacity-30' : ''}`} />
       )}
@@ -281,190 +281,153 @@ export const FloatingPlayer = memo(function FloatingPlayer() {
     ? tracks.find((t) => t.id === currentTrack.id)?.isFavorite
     : false;
 
-  const [isHovered, setIsHovered] = useState(false);
-
   if (!currentTrack) return null;
 
   return (
-    <div
-      className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[min(640px,calc(100vw-48px))]"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
+    <div className="fixed bottom-0 left-0 right-0 z-50 h-[72px] bg-groove-900 border-t border-groove-700">
+      {/* ── Progress bar — thin 2px line at the very top ── */}
+      <div className="absolute top-0 left-0 right-0 h-[2px] z-10">
+        <ProgressBarInline progress={progress} duration={duration} onSeek={seek} />
+      </div>
+
       {/* ── Main bar ── */}
-      <div
-        className="
-          glass-floating
-          p-2
-          flex flex-col
-          transition-all duration-apple ease-apple
-          group
-        "
-      >
-        {/* ── Controls row ── */}
-        <div className="flex items-center gap-0">
-          {/* ── Left: Art + Info ── */}
-          <div className="flex items-center gap-3 min-w-0 flex-1">
-            {/* Album Art — 56×56 */}
-            <button
-              onClick={() => setFullPlayerOpen(true)}
-              className="
-                relative w-14 h-14 rounded-radius-xl overflow-hidden flex-shrink-0
-                group/art
-                transition-all duration-apple ease-apple
-                hover:scale-105 hover:shadow-lg hover:shadow-black/30
-                active:scale-95
-                ring-1 ring-white/10
-              "
-              aria-label="Open full player"
-            >
-              {currentTrack.thumbnail ? (
-                <img
-                  src={currentTrack.thumbnail}
-                  alt={currentTrack.title}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full bg-white/10 flex items-center justify-center">
-                  <Music className="w-6 h-6 text-white/40" />
-                </div>
-              )}
-              {/* Hover overlay */}
-              <div className="
-                absolute inset-0 bg-black/50 backdrop-blur-sm
-                flex items-center justify-center
-                opacity-0 group-hover/art:opacity-100
-                transition-opacity duration-apple
-              ">
-                <Maximize2 className="w-4 h-4 text-white" />
+      <div className="h-full px-4 flex items-center gap-0">
+        {/* ── Left: Art + Info ── */}
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          {/* Album Art — 56×56 */}
+          <button
+            onClick={() => setFullPlayerOpen(true)}
+            className="
+              relative w-14 h-14 rounded-radius-sm overflow-hidden flex-shrink-0
+              transition-all duration-apple ease-apple
+              hover:scale-105 hover:shadow-lg hover:shadow-black/30
+              active:scale-95
+              ring-1 ring-groove-600
+            "
+            aria-label="Open full player"
+          >
+            {currentTrack.thumbnail ? (
+              <img
+                src={currentTrack.thumbnail}
+                alt={currentTrack.title}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full bg-groove-700 flex items-center justify-center">
+                <Music className="w-6 h-6 text-groove-400" />
               </div>
-            </button>
+            )}
+          </button>
 
-            {/* Track Info */}
-            <div className="flex flex-col min-w-0 gap-0.5">
-              <div className="flex items-center gap-2">
-                <span className="text-mac-headline text-white truncate">
-                  {currentTrack.title}
-                </span>
-                {isPlaying && <Equalizer />}
-              </div>
-              <span className="text-mac-body text-label-dark-tertiary truncate">
-                {currentTrack.artist}
+          {/* Track Info */}
+          <div className="flex flex-col min-w-0 gap-0.5">
+            <div className="flex items-center gap-2">
+              <span className="text-mac-headline text-groove-50 truncate">
+                {currentTrack.title}
               </span>
+              {isPlaying && <Equalizer />}
             </div>
-          </div>
-
-          {/* ── Center: Transport Controls ── */}
-          <div className="flex items-center gap-1">
-            <CtrlButton
-              onClick={toggleShuffle}
-              label={isShuffle ? 'Shuffle on' : 'Shuffle off'}
-              active={isShuffle}
-            >
-              <Shuffle className="w-4 h-4" />
-            </CtrlButton>
-
-            <CtrlButton onClick={previousTrack} label="Previous track">
-              <SkipBack className="w-4 h-4 fill-current" />
-            </CtrlButton>
-
-            <PlayButton isPlaying={isPlaying} onClick={togglePlay} />
-
-            <CtrlButton onClick={nextTrack} label="Next track">
-              <SkipForward className="w-4 h-4 fill-current" />
-            </CtrlButton>
-
-            <CtrlButton
-              onClick={cycleRepeat}
-              label={`Repeat ${repeatMode === 'one' ? 'one' : repeatMode === 'all' ? 'all' : 'off'}`}
-              active={repeatMode !== 'off'}
-            >
-              {repeatMode === 'one' ? (
-                <Repeat1 className="w-4 h-4" />
-              ) : (
-                <Repeat className="w-4 h-4" />
-              )}
-            </CtrlButton>
-          </div>
-
-          {/* ── Right: Secondary Controls ── */}
-          <div className={`
-            flex items-center gap-0.5
-            transition-all duration-250 ease-apple
-            overflow-hidden
-            ${isHovered ? 'opacity-100 max-w-[260px]' : 'opacity-0 max-w-0 pointer-events-none'}
-          `}>
-            {/* Separator */}
-            <div className="w-px h-5 bg-white/10 mx-1 flex-shrink-0" />
-
-            {/* Favorite */}
-            <CtrlButton
-              onClick={() => { if (currentTrack) toggleFavorite(currentTrack.id); }}
-              label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-              active={isFavorite}
-              accent
-            >
-              <Heart className={`w-4 h-4 ${isFavorite ? 'fill-current' : ''}`} />
-            </CtrlButton>
-
-            {/* Download */}
-            <DownloadBtn track={currentTrack} />
-
-            {/* Volume — inline, 64px wide */}
-            <div className="flex items-center gap-1.5 group/vol-wrap">
-              <CtrlButton
-                onClick={toggleMute}
-                label={isMuted ? 'Unmute' : 'Mute'}
-              >
-                {isMuted || volume === 0 ? (
-                  <VolumeX className="w-4 h-4" />
-                ) : volume < 0.5 ? (
-                  <Volume1 className="w-4 h-4" />
-                ) : (
-                  <Volume2 className="w-4 h-4" />
-                )}
-              </CtrlButton>
-              <div className={`
-                transition-all duration-250 ease-apple
-                ${isHovered ? 'w-16 opacity-100' : 'w-0 opacity-0'}
-              `}>
-                <VolumeSlider volume={isMuted ? 0 : volume} onChange={setVolume} />
-              </div>
-            </div>
-
-            {/* Separator */}
-            <div className="w-px h-5 bg-white/10 mx-1 flex-shrink-0" />
-
-            {/* Queue */}
-            <CtrlButton
-              onClick={toggleQueue}
-              label={isQueueOpen ? 'Close queue' : 'Open queue'}
-              active={isQueueOpen}
-            >
-              <ListMusic className="w-4 h-4" />
-            </CtrlButton>
-
-            {/* Lyrics */}
-            <CtrlButton
-              onClick={toggleLyrics}
-              label={isLyricsOpen ? 'Close lyrics' : 'Open lyrics'}
-              active={isLyricsOpen}
-            >
-              <Mic2 className="w-4 h-4" />
-            </CtrlButton>
+            <span className="text-mac-body text-groove-300 truncate">
+              {currentTrack.artist}
+            </span>
           </div>
         </div>
 
-        {/* ── Progress bar — 3px height, accent fill ── */}
-        <div className="px-3 pb-1.5 pt-1">
-          <ProgressBarInline progress={progress} duration={duration} onSeek={seek} />
+        {/* ── Center: Transport Controls ── */}
+        <div className="flex items-center gap-1">
+          <CtrlButton
+            onClick={toggleShuffle}
+            label={isShuffle ? 'Shuffle on' : 'Shuffle off'}
+            active={isShuffle}
+          >
+            <Shuffle className="w-4 h-4" />
+          </CtrlButton>
+
+          <CtrlButton onClick={previousTrack} label="Previous track">
+            <SkipBack className="w-4 h-4 fill-current" />
+          </CtrlButton>
+
+          <PlayButton isPlaying={isPlaying} onClick={togglePlay} />
+
+          <CtrlButton onClick={nextTrack} label="Next track">
+            <SkipForward className="w-4 h-4 fill-current" />
+          </CtrlButton>
+
+          <CtrlButton
+            onClick={cycleRepeat}
+            label={`Repeat ${repeatMode === 'one' ? 'one' : repeatMode === 'all' ? 'all' : 'off'}`}
+            active={repeatMode !== 'off'}
+          >
+            {repeatMode === 'one' ? (
+              <Repeat1 className="w-4 h-4" />
+            ) : (
+              <Repeat className="w-4 h-4" />
+            )}
+          </CtrlButton>
+        </div>
+
+        {/* ── Right: Secondary Controls ── */}
+        <div className="flex items-center gap-0.5 flex-1 justify-end">
+          {/* Favorite */}
+          <CtrlButton
+            onClick={() => { if (currentTrack) toggleFavorite(currentTrack.id); }}
+            label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+            active={isFavorite}
+            accent
+          >
+            <Heart className={`w-4 h-4 ${isFavorite ? 'fill-current' : ''}`} />
+          </CtrlButton>
+
+          {/* Download */}
+          <DownloadBtn track={currentTrack} />
+
+          {/* Separator */}
+          <div className="w-px h-5 bg-groove-700 mx-1 flex-shrink-0" />
+
+          {/* Volume */}
+          <div className="flex items-center gap-1.5 group/vol-wrap">
+            <CtrlButton
+              onClick={toggleMute}
+              label={isMuted ? 'Unmute' : 'Mute'}
+            >
+              {isMuted || volume === 0 ? (
+                <VolumeX className="w-4 h-4" />
+              ) : volume < 0.5 ? (
+                <Volume1 className="w-4 h-4" />
+              ) : (
+                <Volume2 className="w-4 h-4" />
+              )}
+            </CtrlButton>
+            <VolumeSlider volume={isMuted ? 0 : volume} onChange={setVolume} />
+          </div>
+
+          {/* Separator */}
+          <div className="w-px h-5 bg-groove-700 mx-1 flex-shrink-0" />
+
+          {/* Queue */}
+          <CtrlButton
+            onClick={toggleQueue}
+            label={isQueueOpen ? 'Close queue' : 'Open queue'}
+            active={isQueueOpen}
+          >
+            <ListMusic className="w-4 h-4" />
+          </CtrlButton>
+
+          {/* Lyrics */}
+          <CtrlButton
+            onClick={toggleLyrics}
+            label={isLyricsOpen ? 'Close lyrics' : 'Open lyrics'}
+            active={isLyricsOpen}
+          >
+            <Mic2 className="w-4 h-4" />
+          </CtrlButton>
         </div>
       </div>
     </div>
   );
 });
 
-/* ─── Inline Progress Bar (full-width, 3px height) ─── */
+/* ─── Inline Progress Bar (full-width, 2px height) ─── */
 
 const ProgressBarInline = memo(function ProgressBarInline({
   progress,
@@ -478,7 +441,6 @@ const ProgressBarInline = memo(function ProgressBarInline({
   const percent = duration > 0 ? (progress / duration) * 100 : 0;
   const trackRef = useRef<HTMLDivElement>(null);
   const [scrubbing, setScrubbing] = useState(false);
-  const [hoverTime, setHoverTime] = useState<number | null>(null);
 
   const commitSeek = useCallback(
     (fraction: number) => {
@@ -489,59 +451,37 @@ const ProgressBarInline = memo(function ProgressBarInline({
 
   const { onPointerDown, onPointerMove, onPointerUp } = useSliderDrag(trackRef, commitSeek);
 
-  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    onPointerMove(e);
-    if (!trackRef.current) return;
-    const rect = trackRef.current.getBoundingClientRect();
-    const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    setHoverTime(fraction * duration);
-  }, [onPointerMove, duration]);
-
   return (
-    <div className="flex items-center gap-3">
-      <span className="text-[10px] text-white/40 w-8 text-right tabular-nums select-none font-mono">
-        {formatTime(progress)}
-      </span>
-
+    <div
+      ref={trackRef}
+      className="w-full h-[2px] bg-groove-600 cursor-pointer group/pbar"
+      onPointerDown={(e) => { setScrubbing(true); onPointerDown(e); }}
+      onPointerMove={onPointerMove}
+      onPointerUp={(e) => { setScrubbing(false); onPointerUp(e); }}
+      role="slider"
+      aria-label="Playback progress"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(percent)}
+      tabIndex={0}
+    >
+      {/* Fill — emerald */}
       <div
-        ref={trackRef}
-        className="flex-1 h-5 flex items-center touch-none cursor-pointer group/pbar"
-        onPointerDown={(e) => { setScrubbing(true); onPointerDown(e); }}
-        onPointerMove={handlePointerMove}
-        onPointerUp={(e) => { setScrubbing(false); onPointerUp(e); }}
-        role="slider"
-        aria-label="Playback progress"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.round(percent)}
-        tabIndex={0}
+        className="h-full bg-emerald relative transition-[width] duration-75"
+        style={{ width: `${percent}%` }}
       >
-        <div className="w-full h-[3px] bg-white/10 rounded-full relative overflow-visible group-hover/pbar:h-1.5 transition-all duration-150">
-          {/* Fill — accent blue */}
-          <div
-            className="h-full bg-accent rounded-full relative transition-[width] duration-75"
-            style={{ width: `${percent}%` }}
-          >
-            {/* Glow */}
-            <div className="absolute inset-0 rounded-full bg-accent/30 blur-sm" />
-          </div>
-          {/* Thumb — blue circle */}
-          <div
-            className="
-              absolute top-1/2 -translate-y-1/2 -translate-x-1/2
-              w-3 h-3 bg-white rounded-full
-              opacity-0 group-hover/pbar:opacity-100
-              transition-opacity duration-200
-              pointer-events-none
-            "
-            style={{ left: `${percent}%` }}
-          />
-        </div>
+        {/* Thumb — visible on hover */}
+        <div
+          className="
+            absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2
+            w-3 h-3 bg-groove-50 rounded-full
+            opacity-0 group-hover/pbar:opacity-100
+            transition-opacity duration-200
+            pointer-events-none
+            shadow-md
+          "
+        />
       </div>
-
-      <span className="text-[10px] text-white/40 w-8 tabular-nums select-none font-mono">
-        {formatTime(duration)}
-      </span>
     </div>
   );
 });

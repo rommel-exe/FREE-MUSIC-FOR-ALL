@@ -7,6 +7,7 @@ interface Toast {
 }
 
 export type LibraryTab = 'all' | 'liked' | 'downloaded';
+export type ViewMode = 'list' | 'grid';
 
 interface UIState {
   currentPage: string;
@@ -22,6 +23,8 @@ interface UIState {
   selectedPlaylistId: string | null;
   libraryTab: LibraryTab;
   isPlaylistDrawerOpen: boolean;
+  recentSearches: string[];
+  viewMode: ViewMode;
 
   setPage: (page: string) => void;
   toggleTheme: () => void;
@@ -38,6 +41,8 @@ interface UIState {
   setLibraryTab: (tab: LibraryTab) => void;
   togglePlaylistDrawer: () => void;
   setPlaylistDrawerOpen: (open: boolean) => void;
+  addRecentSearch: (query: string) => void;
+  setViewMode: (mode: ViewMode) => void;
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
@@ -54,6 +59,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   selectedPlaylistId: null,
   libraryTab: 'all',
   isPlaylistDrawerOpen: false,
+  recentSearches: [],
+  viewMode: 'list',
 
   setPage: (page) => set({ currentPage: page }),
   toggleTheme: () => set((s) => ({ theme: s.theme === 'dark' ? 'light' : 'dark' })),
@@ -74,4 +81,11 @@ export const useUIStore = create<UIState>((set, get) => ({
   setLibraryTab: (tab) => set({ libraryTab: tab }),
   togglePlaylistDrawer: () => set((s) => ({ isPlaylistDrawerOpen: !s.isPlaylistDrawerOpen })),
   setPlaylistDrawerOpen: (open) => set({ isPlaylistDrawerOpen: open }),
+  addRecentSearch: (query) => set((s) => {
+    const trimmed = query.trim();
+    if (!trimmed) return s;
+    const filtered = s.recentSearches.filter((q) => q !== trimmed);
+    return { recentSearches: [trimmed, ...filtered].slice(0, 10) };
+  }),
+  setViewMode: (mode) => set({ viewMode: mode }),
 }));

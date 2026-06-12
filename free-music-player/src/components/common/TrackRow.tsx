@@ -59,9 +59,9 @@ export interface TrackRowProps {
 function EqualizerBars({ className = '' }: { className?: string }) {
   return (
     <span className={`flex items-end gap-[2px] h-3 ${className}`}>
-      <span className="w-[2.5px] bg-accent rounded-full animate-equalizer" style={{ animationDelay: '0s' }} />
-      <span className="w-[2.5px] bg-accent rounded-full animate-equalizer" style={{ animationDelay: '0.2s' }} />
-      <span className="w-[2.5px] bg-accent rounded-full animate-equalizer" style={{ animationDelay: '0.4s' }} />
+      <span className="w-[2.5px] bg-emerald rounded-full animate-equalizer" style={{ animationDelay: '0s' }} />
+      <span className="w-[2.5px] bg-emerald rounded-full animate-equalizer" style={{ animationDelay: '0.2s' }} />
+      <span className="w-[2.5px] bg-emerald rounded-full animate-equalizer" style={{ animationDelay: '0.4s' }} />
     </span>
   );
 }
@@ -162,17 +162,17 @@ export const TrackRow = memo(function TrackRow({
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className={`track-row group h-10 px-3 py-2 flex items-center gap-3 rounded-radius-sm ${
+      className={`track-row group h-14 px-3 py-2 flex items-center gap-3 rounded-radius-sm ${
         canReorder ? 'cursor-grab active:cursor-grabbing' : ''
       } ${isDragged ? 'opacity-40' : ''} ${
         isActive
-          ? 'bg-accent/[0.06] border-l-2 border-accent'
+          ? 'bg-emerald-subtle border-l-2 border-emerald'
           : 'border-l-2 border-transparent'
       } ${
-        hovered && !isActive ? 'bg-dark-quinary' : ''
+        hovered && !isActive ? 'bg-groove-600' : ''
       } ${
         isDragOver
-          ? 'relative before:absolute before:inset-x-0 before:top-0 before:h-[2px] before:bg-green-500 before:z-10'
+          ? 'relative before:absolute before:inset-x-0 before:top-0 before:h-[2px] before:bg-emerald before:z-10'
           : ''
       } ${dragOverlay ? 'glass-content rounded-radius-sm shadow-lg shadow-black/30' : ''}`}
       style={{
@@ -181,15 +181,15 @@ export const TrackRow = memo(function TrackRow({
     >
       {/* ── Number / Play / Equalizer / Drag handle ─────────────── */}
       {showIndex && (
-        <span className="track-number w-7 text-mac-caption text-label-dark-quaternary text-right tabular-nums font-mono flex items-center justify-end flex-shrink-0">
+        <span className="track-number w-7 text-mac-caption text-groove-400 text-right tabular-nums font-mono flex items-center justify-end flex-shrink-0">
           {showEqualizer ? (
             <EqualizerBars />
           ) : showGrip ? (
-            <GripVertical className="w-4 h-4 text-white/40" />
+            <GripVertical className="w-4 h-4 text-groove-400" />
           ) : showPlayOnHover ? (
-            <Play className="w-4 h-4 text-white fill-white" />
+            <Play className="w-4 h-4 text-emerald fill-emerald" />
           ) : (
-            <span className={isActive ? 'text-accent' : 'text-label-dark-quaternary'}>
+            <span className={isActive ? 'text-emerald' : 'text-groove-400'}>
               {index + 1}
             </span>
           )}
@@ -197,7 +197,7 @@ export const TrackRow = memo(function TrackRow({
       )}
 
       {/* ── Thumbnail ──────────────────────────────────────────── */}
-      <div className="w-6 h-6 rounded-radius-sm bg-white/[0.06] flex-shrink-0 overflow-hidden ring-1 ring-white/[0.04]">
+      <div className="w-12 h-12 rounded-radius-sm bg-groove-500/20 flex-shrink-0 overflow-hidden ring-1 ring-white/[0.04]">
         {track.thumbnail ? (
           <img
             src={track.thumbnail}
@@ -226,18 +226,18 @@ export const TrackRow = memo(function TrackRow({
       <div className="flex-1 min-w-0 text-left">
         <div
           className={`text-mac-body truncate leading-tight ${
-            isActive ? 'text-accent' : 'text-label-dark-primary'
+            isActive ? 'text-emerald' : 'text-groove-100'
           }`}
         >
           {track.title}
         </div>
         {(showArtist || showAlbum) && (
-          <div className="text-mac-subhead text-label-dark-tertiary truncate mt-0.5 leading-tight">
+          <div className="text-mac-subhead text-groove-300 truncate mt-0.5 leading-tight">
             {showArtist && track.artist}
             {showArtist && showAlbum && track.album ? ' \u00b7 ' : ''}
             {showAlbum && track.album}
             {downloadMeta && (
-              <span className="ml-1.5 text-label-dark-quaternary">
+              <span className="ml-1.5 text-groove-400">
                 {'\u00b7'} {downloadMeta}
               </span>
             )}
@@ -247,7 +247,7 @@ export const TrackRow = memo(function TrackRow({
 
       {/* ── Duration ───────────────────────────────────────────── */}
       {showDuration && (
-        <span className="text-mac-caption text-label-dark-quaternary tabular-nums font-mono w-14 text-right flex-shrink-0">
+        <span className="text-mac-caption text-groove-400 tabular-nums font-mono w-14 text-right flex-shrink-0">
           {formatDuration(track.duration || 0)}
         </span>
       )}
@@ -260,15 +260,15 @@ export const TrackRow = memo(function TrackRow({
             {onToggleFavorite && (
               <button
                 onClick={handleFavoriteClick}
-                className="p-1.5 rounded-radius-sm hover:bg-white/[0.08] active:scale-95 transition-all duration-apple ease-apple"
+                className="p-1.5 rounded-radius-sm hover:bg-groove-600 active:scale-95 transition-all duration-apple ease-apple"
                 type="button"
                 title={trackFavorite ? 'Unlike' : 'Like'}
               >
                 <Heart
                   className={`w-4 h-4 transition-all duration-apple ${
                     trackFavorite
-                      ? 'text-red-400 fill-current'
-                      : 'text-white/45 hover:text-white/70'
+                      ? 'text-danger fill-current'
+                      : 'text-groove-400 hover:text-groove-200'
                   }`}
                 />
               </button>
@@ -281,7 +281,7 @@ export const TrackRow = memo(function TrackRow({
                   e.stopPropagation();
                   onDownload(e);
                 }}
-                className="p-1.5 rounded-radius-sm hover:bg-white/[0.08] active:scale-95 transition-all duration-apple ease-apple"
+                className="p-1.5 rounded-radius-sm hover:bg-groove-600 active:scale-95 transition-all duration-apple ease-apple"
                 type="button"
                 title={
                   isDownloading
@@ -294,10 +294,10 @@ export const TrackRow = memo(function TrackRow({
                 <Download
                   className={`w-4 h-4 transition-colors ${
                     isDownloading
-                      ? 'text-white animate-pulse'
+                      ? 'text-groove-200 animate-pulse'
                       : isDownloaded
-                        ? 'text-green-500'
-                        : 'text-white/45 hover:text-white/70'
+                        ? 'text-emerald'
+                        : 'text-groove-400 hover:text-groove-200'
                   }`}
                 />
               </button>
@@ -335,7 +335,7 @@ export const TrackRow = memo(function TrackRow({
                   icon: (
                     <Heart
                       className={`w-4 h-4 ${
-                        trackFavorite ? 'text-red-400 fill-current' : ''
+                        trackFavorite ? 'text-danger fill-current' : ''
                       }`}
                     />
                   ),
@@ -348,10 +348,10 @@ export const TrackRow = memo(function TrackRow({
           <>
             {/* Idle state indicators */}
             {isDownloaded && (
-              <Download className="w-4 h-4 text-green-500/60" />
+              <Download className="w-4 h-4 text-emerald/60" />
             )}
             {trackFavorite && !isDownloaded && (
-              <Heart className="w-4 h-4 text-red-400/50 fill-current" />
+              <Heart className="w-4 h-4 text-danger/50 fill-current" />
             )}
           </>
         )}
@@ -367,7 +367,7 @@ export const TrackRow = memo(function TrackRow({
           type="button"
           title="Remove from playlist"
         >
-          <X className="w-4 h-4 text-white/45 hover:text-red-400" />
+          <X className="w-4 h-4 text-groove-400 hover:text-danger" />
         </button>
       )}
     </div>

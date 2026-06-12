@@ -4,7 +4,8 @@ import { useDownloadStore } from '@/store/downloadStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { usePlayerStore } from '@/store/playerStore';
 import { TrackRow } from '@/components/common/TrackRow';
-import { Download, Music } from 'lucide-react';
+import { Download, Music, Disc3, RefreshCw, Trash2 } from 'lucide-react';
+
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -37,7 +38,7 @@ function formatRelativeDate(dateString: string | null | undefined): string {
 }
 
 /* ------------------------------------------------------------------ */
-/*  DownloadsPage                                                       */
+/*  DownloadsPage — "The Crate"                                        */
 /* ------------------------------------------------------------------ */
 
 export function DownloadsPage() {
@@ -76,38 +77,38 @@ export function DownloadsPage() {
     <div className="h-full overflow-y-auto overscroll-contain relative z-10 pb-32">
       {/* ── Header ──────────────────────────────────────────────── */}
       <div className="px-6 pt-14 pb-6 drag-region">
-        <h1 className="text-mac-hero text-white/90 tracking-tight mb-1 no-drag">
-          Downloads
+        <h1 className="text-mac-hero text-groove-50 tracking-tight mb-1 no-drag">
+          Your Crate
         </h1>
-        <p className="text-mac-subhead text-white/30 no-drag">
-          Manage your offline music
+        <p className="text-mac-subhead text-groove-300 no-drag">
+          Your offline collection
         </p>
       </div>
 
       {!hasAny ? (
         /* ── Empty state ─────────────────────────────────────── */
         <div className="flex flex-col items-center justify-center py-24 animate-fade-in">
-          <div className="w-16 h-16 rounded-full bg-white/[0.04] flex items-center justify-center mb-4 ring-1 ring-white/[0.06]">
-            <Download className="w-7 h-7 text-white/20" />
+          <div className="w-16 h-16 rounded-full bg-groove-700 flex items-center justify-center mb-4 ring-1 ring-groove-600">
+            <Disc3 className="w-7 h-7 text-groove-400" />
           </div>
-          <p className="text-white/50 font-medium text-mac-body">No downloads yet</p>
-          <p className="text-sm text-white/25 mt-1.5 max-w-xs text-center leading-relaxed">
-            Click the download icon on any track to save it for offline listening
+          <p className="text-groove-200 font-medium text-mac-body">Your crate is empty</p>
+          <p className="text-sm text-groove-400 mt-1.5 max-w-xs text-center leading-relaxed">
+            Download songs to listen offline
           </p>
         </div>
       ) : (
         <div className="px-6 animate-fade-in space-y-8">
-          {/* ── Active downloads ─────────────────────────────── */}
+          {/* ── Active downloads — card layout ──────────────── */}
           {activeDownloads.length > 0 && (
             <section>
-              <h2 className="text-mac-caption font-semibold text-white/50 uppercase tracking-wider mb-3">
+              <h2 className="text-mac-caption font-semibold text-groove-300 uppercase tracking-wider mb-3">
                 Downloading ({activeDownloads.length})
               </h2>
-              <div className="glass-content rounded-radius-lg p-1">
+              <div className="space-y-3">
                 {activeDownloads.map((entry) => {
                   const track = trackMap.get(entry.trackId);
                   return (
-                    <ActiveDownloadRow
+                    <ActiveDownloadCard
                       key={entry.trackId}
                       entry={entry}
                       track={track}
@@ -119,38 +120,84 @@ export function DownloadsPage() {
             </section>
           )}
 
-          {/* ── Failed downloads ─────────────────────────────── */}
+          {/* ── Failed downloads — inline error rows ────────── */}
           {failedDownloads.length > 0 && (
             <section>
-              <h2 className="text-mac-caption font-semibold text-white/50 uppercase tracking-wider mb-3">
+              <h2 className="text-mac-caption font-semibold text-groove-300 uppercase tracking-wider mb-3">
                 Failed ({failedDownloads.length})
               </h2>
-              <div className="glass-content rounded-radius-lg p-1">
+              <div className="space-y-1">
                 {failedDownloads.map((entry) => {
                   const track = trackMap.get(entry.trackId);
                   return (
-                    <FailedDownloadRow
+                    <div
                       key={entry.trackId}
-                      entry={entry}
-                      track={track}
-                      onRetry={() => {
-                        if (track) retryDownload(track);
-                      }}
-                      onDelete={() => deleteDownload(entry.trackId)}
-                    />
+                      className="flex items-center gap-3 px-4 py-3 rounded-radius-md bg-groove-700/50 border border-danger/10 transition-colors"
+                    >
+                      {/* Thumbnail */}
+                      <div className="w-11 h-11 rounded-radius-sm bg-groove-600 flex-shrink-0 overflow-hidden">
+                        {(track?.thumbnail || entry.thumbnail) ? (
+                          <img
+                            src={track?.thumbnail || entry.thumbnail}
+                            alt=""
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Music className="w-5 h-5 text-groove-400" />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-groove-100 truncate leading-tight">
+                          {entry.title}
+                        </div>
+                        <div className="text-xs text-danger truncate mt-0.5">
+                          {entry.error ?? 'Download failed'}
+                        </div>
+                      </div>
+
+                      {/* Buttons */}
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (track) retryDownload(track);
+                          }}
+                          className="p-1.5 rounded-md text-groove-400 hover:text-emerald hover:bg-groove-600 transition-all duration-150"
+                          type="button"
+                          title="Retry download"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteDownload(entry.trackId);
+                          }}
+                          className="p-1.5 rounded-md text-groove-400 hover:text-danger hover:bg-groove-600 transition-all duration-150"
+                          type="button"
+                          title="Remove"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
                   );
                 })}
               </div>
             </section>
           )}
 
-          {/* ── Completed downloads ──────────────────────────── */}
+          {/* ── Completed downloads — clean list ────────────── */}
           {completedDownloads.length > 0 && (
             <section>
-              <h2 className="text-mac-caption font-semibold text-white/50 uppercase tracking-wider mb-3">
+              <h2 className="text-mac-caption font-semibold text-groove-300 uppercase tracking-wider mb-3">
                 Downloaded ({completedDownloads.length})
               </h2>
-              <div className="glass-content rounded-radius-lg p-1">
+              <div>
                 {completedDownloads.map((entry) => {
                   const track = trackMap.get(entry.trackId);
                   // Build a fake Track for TrackRow
@@ -218,10 +265,10 @@ export function DownloadsPage() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  ActiveDownloadRow — shown while a download is in progress           */
+/*  ActiveDownloadCard — card-based design for in-progress downloads   */
 /* ------------------------------------------------------------------ */
 
-function ActiveDownloadRow({
+function ActiveDownloadCard({
   entry,
   track,
   onCancel,
@@ -233,125 +280,53 @@ function ActiveDownloadRow({
   const pct = Math.round(entry.progress * 100);
 
   return (
-    <div className="flex items-center gap-3.5 px-3 py-3 rounded-radius-sm hover:bg-white/[0.03] transition-colors">
-      {/* Thumbnail */}
-      <div className="w-11 h-11 rounded-radius-sm bg-white/10 flex-shrink-0 overflow-hidden">
-        {(track?.thumbnail || entry.thumbnail) ? (
-          <img
-            src={track?.thumbnail || entry.thumbnail}
-            alt=""
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-white/[0.06]">
-            <Download className="w-5 h-5 text-white/30" />
+    <div className="rounded-radius-lg bg-groove-700 border border-groove-500/20 p-4 transition-colors">
+      <div className="flex items-center gap-4">
+        {/* Thumbnail */}
+        <div className="w-16 h-16 rounded-radius-sm bg-groove-600 flex-shrink-0 overflow-hidden">
+          {(track?.thumbnail || entry.thumbnail) ? (
+            <img
+              src={track?.thumbnail || entry.thumbnail}
+              alt=""
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <Download className="w-5 h-5 text-groove-400" />
+            </div>
+          )}
+        </div>
+
+        {/* Info + progress */}
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-groove-100 truncate leading-tight">
+            {entry.title}
           </div>
-        )}
-      </div>
-
-      {/* Info + progress */}
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold text-white truncate leading-tight">
-          {entry.title}
-        </div>
-        <div className="text-xs text-label-dark-tertiary truncate mt-0.5">{entry.artist}</div>
-        {/* Progress bar — accent with glow */}
-        <div className="mt-1.5 h-1.5 bg-white/[0.08] rounded-full overflow-hidden">
-          <div
-            className="h-full bg-accent rounded-full transition-all duration-300 shadow-[0_0_8px_rgba(0,135,255,0.3)]"
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-        <span className="text-[10px] text-label-dark-quaternary tabular-nums font-mono mt-0.5 inline-block">{pct}%</span>
-      </div>
-
-      {/* Cancel button */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onCancel();
-        }}
-        className="flex items-center gap-2 p-1.5 rounded-md text-label-dark-tertiary hover:text-red-500 hover:bg-white/[0.06] transition-all duration-150"
-        type="button"
-        title="Cancel download"
-      >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  FailedDownloadRow                                                   */
-/* ------------------------------------------------------------------ */
-
-function FailedDownloadRow({
-  entry,
-  track,
-  onRetry,
-  onDelete,
-}: {
-  entry: { title: string; artist: string; thumbnail: string; error?: string };
-  track?: { thumbnail: string };
-  onRetry: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <div className="flex items-center gap-3.5 px-3 py-3 rounded-radius-sm hover:bg-white/[0.03] transition-colors">
-      {/* Thumbnail */}
-      <div className="w-11 h-11 rounded-radius-sm bg-white/10 flex-shrink-0 overflow-hidden">
-        {(track?.thumbnail || entry.thumbnail) ? (
-          <img
-            src={track?.thumbnail || entry.thumbnail}
-            alt=""
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-white/[0.06]">
-            <Music className="w-5 h-5 text-white/30" />
+          <div className="text-xs text-groove-300 truncate mt-0.5">{entry.artist}</div>
+          {/* Progress bar */}
+          <div className="mt-2 h-2 bg-groove-600 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-emerald rounded-full transition-all duration-300 shadow-emerald-glow"
+              style={{ width: `${pct}%` }}
+            />
           </div>
-        )}
-      </div>
-
-      {/* Info */}
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold text-white truncate leading-tight">
-          {entry.title}
+          <span className="text-mac-caption text-groove-400 tabular-nums font-mono mt-1 inline-block">
+            {pct}%
+          </span>
         </div>
-        <div className="text-xs text-red-500/70 truncate mt-0.5">
-          {entry.error ?? 'Download failed'}
-        </div>
-      </div>
 
-      {/* Buttons */}
-      <div className="flex items-center gap-1">
+        {/* Cancel button */}
         <button
           onClick={(e) => {
             e.stopPropagation();
-            onRetry();
+            onCancel();
           }}
-          className="flex items-center gap-2 p-1.5 rounded-md text-label-dark-tertiary hover:text-accent hover:bg-white/[0.06] transition-all duration-150"
+          className="p-2 rounded-md text-groove-400 hover:text-danger hover:bg-groove-600 transition-all duration-150"
           type="button"
-          title="Retry download"
+          title="Cancel download"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M1 4v6h6M23 20v-6h-6" />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" />
-          </svg>
-        </button>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          className="flex items-center gap-2 p-1.5 rounded-md text-label-dark-tertiary hover:text-red-500 hover:bg-white/[0.06] transition-all duration-150"
-          type="button"
-          title="Remove"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
       </div>

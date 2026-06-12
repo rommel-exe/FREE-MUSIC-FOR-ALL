@@ -110,18 +110,18 @@ export function Sidebar() {
               key={id}
               onClick={() => setPage(id)}
               className={`
-                w-full flex items-center gap-3 px-3 py-[7px] rounded-mac-sm
-                text-mac-footnote font-medium transition-colors duration-150
+                w-full flex items-center gap-3 px-3 py-[7px] rounded-radius-sm
+                text-mac-body font-medium transition-colors duration-150
                 group relative active:scale-[0.98]
                 ${isActive
-                  ? 'text-white bg-white/10'
-                  : 'text-white/50 hover:text-white/80 hover:bg-white/[0.06]'
+                  ? 'text-emerald bg-emerald-subtle'
+                  : 'text-groove-300 hover:text-groove-100 hover:bg-groove-700'
                 }
               `}
             >
               <Icon
                 className={`w-[18px] h-[18px] flex-shrink-0 transition-colors duration-150 ${
-                  isActive ? 'text-mac-blue' : 'text-white/40 group-hover:text-white/60'
+                  isActive ? 'text-emerald' : 'text-groove-400 group-hover:text-groove-200'
                 }`}
                 strokeWidth={1.8}
               />
@@ -132,18 +132,18 @@ export function Sidebar() {
       </nav>
 
       {/* ── Divider ── */}
-      <div className="mx-4 border-t border-white/[0.06]" />
+      <div className="mx-4 border-t border-groove-500/30" />
 
       {/* ── Playlists ── */}
       <div className="flex-1 overflow-y-auto px-2 pt-3 pb-2 no-drag scrollbar-thin">
         {/* Header row */}
         <div className="flex items-center justify-between px-2 mb-2">
-          <h3 className="text-[11px] font-semibold text-white/30 uppercase tracking-widest select-none">
+          <h3 className="text-[11px] font-semibold text-groove-400 uppercase tracking-widest select-none">
             Playlists
           </h3>
           <button
             onClick={() => openModal('import')}
-            className="w-5 h-5 flex items-center justify-center rounded hover:bg-white/10 text-white/25 hover:text-white/70 transition-colors duration-150"
+            className="w-5 h-5 flex items-center justify-center rounded hover:bg-groove-700 text-groove-400 hover:text-groove-200 transition-colors duration-150"
             title="Import playlist"
           >
             <Plus className="w-3.5 h-3.5" strokeWidth={2} />
@@ -197,21 +197,21 @@ export function Sidebar() {
       </div>
 
       {/* ── Import Button ── */}
-      <div className="p-3 border-t border-white/[0.06] no-drag">
+      <div className="p-3 border-t border-groove-500/30 no-drag">
         <button
           onClick={() => openModal('import')}
           className="
             w-full flex items-center justify-center gap-2
-            py-2 px-3 rounded-mac-sm
-            bg-white/[0.04] hover:bg-white/[0.09]
-            border border-white/[0.06] hover:border-white/[0.12]
-            text-mac-footnote text-white/40 hover:text-white/70
+            py-2 px-3 rounded-radius-sm
+            bg-groove-700 hover:bg-groove-600
+            border border-groove-500/30 hover:border-groove-500/50
+            text-mac-body text-groove-300 hover:text-groove-100
             transition-all duration-200
             active:scale-[0.98]
           "
           type="button"
         >
-          <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+          <Plus className="w-3.5 h-3.5 text-emerald" strokeWidth={2} />
           Import playlist
         </button>
       </div>
@@ -246,10 +246,10 @@ function SidebarPlaylistItem({
     <button
       onClick={onClick}
       className="
-        w-full flex items-center gap-3 px-2 py-[6px] rounded-mac-sm
-        text-white/50 hover:text-white/80
+        w-full flex items-center gap-3 px-2 py-[6px] rounded-radius-sm
+        text-groove-200 hover:text-groove-100
         transition-colors duration-150 group relative
-        hover:bg-white/[0.06] active:scale-[0.98]
+        hover:bg-groove-700 active:scale-[0.98]
       "
     >
       {/* ── Thumbnail ── */}
@@ -286,7 +286,7 @@ function SidebarPlaylistItem({
       {/* ── Text ── */}
       <div className="text-left min-w-0 flex-1">
         <div className="text-[13px] leading-snug truncate">{name}</div>
-        <div className="text-[11px] text-white/25 truncate mt-px">
+        <div className="text-[11px] text-groove-400 truncate mt-px">
           Playlist · {count} {count === 1 ? 'song' : 'songs'}
         </div>
       </div>
@@ -300,7 +300,7 @@ function SidebarPlaylistItem({
           }}
           className="
             absolute right-2 p-1 rounded
-            hover:bg-white/10 text-white/30 hover:text-mac-red
+            hover:bg-groove-600 text-groove-400 hover:text-danger
             transition-all duration-100
             opacity-0 group-hover:opacity-100
           "

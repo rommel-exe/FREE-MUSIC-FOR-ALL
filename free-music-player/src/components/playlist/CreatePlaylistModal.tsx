@@ -146,7 +146,7 @@ export function CreatePlaylistModal() {
               initial="hidden"
               animate="visible"
               exit="exit"
-              className="w-full max-w-[420px] glass-popover rounded-mac-xl pointer-events-auto overflow-hidden noise-texture"
+              className="w-full max-w-[420px] glass-popover rounded-radius-xl pointer-events-auto overflow-hidden noise-texture"
               onClick={(e) => e.stopPropagation()}
             >
               {/* ── Header ─────────────────────────────────── */}
@@ -154,8 +154,8 @@ export function CreatePlaylistModal() {
                 <div className="absolute inset-0 bg-gradient-to-b from-white/[0.04] to-transparent pointer-events-none" />
                 <div className="relative flex items-center justify-between px-5 pt-5 pb-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-mac-green/20 flex items-center justify-center">
-                      <Plus className="w-4 h-4 text-mac-green" />
+                    <div className="w-8 h-8 rounded-lg bg-emerald/20 flex items-center justify-center">
+                      <Plus className="w-4 h-4 text-emerald" />
                     </div>
                     <h2 className="text-mac-headline text-white font-semibold">
                       Create Playlist
@@ -164,7 +164,7 @@ export function CreatePlaylistModal() {
                   <button
                     onClick={handleClose}
                     disabled={loading}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg text-white/40 hover:text-white hover:bg-white/[0.08] active:bg-white/[0.12] transition-all disabled:opacity-30"
+                    className="w-8 h-8 flex items-center justify-center rounded-lg text-groove-300 hover:text-white hover:bg-groove-600 active:bg-groove-500 transition-all disabled:opacity-30"
                   >
                     <X size={16} />
                   </button>
@@ -172,7 +172,7 @@ export function CreatePlaylistModal() {
               </div>
 
               {/* ── Divider ────────────────────────────────── */}
-              <div className="mx-5 h-px bg-white/[0.06]" />
+              <div className="mx-5 h-px bg-groove-500/30" />
 
               {/* ── Content ────────────────────────────────── */}
               <div className="px-5 pb-5 pt-4">
@@ -184,13 +184,13 @@ export function CreatePlaylistModal() {
                   exit="hidden"
                   className="space-y-4"
                 >
-                  <p className="text-[13px] text-white/45 leading-relaxed">
+                  <p className="text-[13px] text-groove-300 leading-relaxed">
                     Create a new playlist to organize your music.
                   </p>
 
                   {/* Name input */}
                   <div className="relative group">
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25 group-focus-within:text-white/50 transition-colors">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-groove-400 group-focus-within:text-groove-200 transition-colors">
                       <ListMusic size={15} />
                     </div>
                     <input
@@ -200,7 +200,7 @@ export function CreatePlaylistModal() {
                       onChange={(e) => setName(e.target.value)}
                       onKeyDown={handleKeyDown}
                       placeholder="Playlist name"
-                      className="mac-input pl-9 pr-4"
+                      className="w-full h-10 rounded-radius-lg bg-groove-800 text-groove-100 placeholder-groove-400 text-sm outline-none border border-groove-500/30 focus:border-emerald focus:shadow-emerald-glow transition-all duration-150 pl-9 pr-4"
                       maxLength={100}
                       autoFocus
                     />
@@ -214,14 +214,14 @@ export function CreatePlaylistModal() {
                       onChange={(e) => setDescription(e.target.value)}
                       onKeyDown={handleKeyDown}
                       placeholder="Description (optional)"
-                      className="mac-input pl-4 pr-4"
+                      className="w-full h-10 rounded-radius-lg bg-groove-800 text-groove-100 placeholder-groove-400 text-sm outline-none border border-groove-500/30 focus:border-emerald focus:shadow-emerald-glow transition-all duration-150 pl-4 pr-4"
                       maxLength={300}
                     />
                   </div>
 
                   {/* Validation */}
                   {name.trim() && name.trim().length < 1 && (
-                    <p className="text-[11px] text-red-400/80 font-medium">
+                    <p className="text-[11px] text-danger/80 font-medium">
                       Please enter a playlist name
                     </p>
                   )}
@@ -231,14 +231,14 @@ export function CreatePlaylistModal() {
                     <button
                       onClick={handleClose}
                       disabled={loading}
-                      className="mac-button-ghost disabled:opacity-30"
+                      className="px-4 py-2 rounded-radius-lg bg-groove-600 hover:bg-groove-500 text-groove-200 text-sm font-semibold transition-all disabled:opacity-30"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={handleCreate}
                       disabled={!canCreate || loading}
-                      className="mac-button-primary disabled:opacity-30 disabled:cursor-not-allowed gap-2"
+                      className="px-4 py-2 rounded-radius-lg bg-emerald hover:bg-emerald-hover active:bg-emerald-active text-white text-sm font-semibold transition-all disabled:opacity-30 disabled:cursor-not-allowed gap-2 inline-flex items-center"
                     >
                       {loading ? (
                         <>

@@ -41,18 +41,18 @@ export function UpdateBanner() {
     switch (status) {
       case 'downloaded':
         return (
-          <div className="glass-popover rounded-mac-xl p-4 shadow-mac-xl border border-[#30D158]/30 bg-[#30D158]/5 noise-texture">
+          <div className="glass-popover rounded-radius-xl p-4 shadow-warm-lg border border-emerald/30 bg-emerald-subtle noise-texture">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2.5">
-                <CheckCircle className="w-5 h-5 text-[#30D158]" />
-                <span className="text-[15px] text-white font-semibold">
+                <CheckCircle className="w-5 h-5 text-emerald" />
+                <span className="text-[15px] text-groove-50 font-semibold">
                   {version ? `v${version} ready to install` : 'Update ready'}
                 </span>
               </div>
               <button
                 type="button"
                 onClick={dismiss}
-                className="w-6 h-6 flex items-center justify-center rounded-md text-white/30 hover:text-white/70 hover:bg-white/[0.08] transition-colors"
+                className="w-6 h-6 flex items-center justify-center rounded-md text-groove-400 hover:text-groove-100 hover:bg-groove-600 transition-colors"
                 aria-label="Dismiss"
               >
                 <X className="w-4 h-4" />
@@ -61,7 +61,7 @@ export function UpdateBanner() {
             <button
               type="button"
               onClick={handleAction}
-              className="w-full py-2.5 rounded-mac-lg bg-[#30D158] hover:bg-[#26B84B] active:bg-[#1E9E3F] text-white text-sm font-semibold transition-all active:scale-[0.98] shadow-lg shadow-[#30D158]/30 flex items-center justify-center gap-2"
+              className="w-full py-2.5 rounded-radius-lg bg-emerald hover:bg-emerald-hover active:bg-emerald-active text-white text-sm font-semibold transition-all active:scale-[0.98] shadow-lg shadow-emerald/30 flex items-center justify-center gap-2"
             >
               <RefreshCw className="w-4 h-4" />
               Install & Restart
@@ -71,14 +71,14 @@ export function UpdateBanner() {
 
       case 'error':
         return (
-          <div className="glass-popover rounded-mac-xl px-4 py-3 shadow-mac-xl border border-amber-500/30 bg-amber-500/5 noise-texture">
+          <div className="glass-popover rounded-radius-xl px-4 py-3 shadow-warm-lg border border-amber-500/30 bg-amber-500/5 noise-texture">
             <div className="flex items-start gap-3">
               <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] text-amber-300 font-semibold mb-1">
                   Update failed
                 </p>
-                <p className="text-[12px] text-white/60 leading-relaxed break-all whitespace-pre-wrap select-all">
+                <p className="text-[12px] text-groove-300 leading-relaxed break-all whitespace-pre-wrap select-all">
                   {errorMessage}
                 </p>
               </div>
@@ -86,14 +86,14 @@ export function UpdateBanner() {
                 <button
                   type="button"
                   onClick={handleAction}
-                  className="px-3 py-1.5 rounded-mac-sm bg-white/10 hover:bg-white/15 text-white/80 hover:text-white text-xs font-medium transition-colors active:scale-95 whitespace-nowrap"
+                  className="px-3 py-1.5 rounded-radius-sm bg-groove-600 hover:bg-groove-500 text-groove-100 hover:text-white text-xs font-medium transition-colors active:scale-95 whitespace-nowrap"
                 >
                   Retry
                 </button>
                 <button
                   type="button"
                   onClick={dismiss}
-                  className="w-6 h-6 flex items-center justify-center rounded-md text-white/30 hover:text-white/70 hover:bg-white/[0.08] transition-colors"
+                  className="w-6 h-6 flex items-center justify-center rounded-md text-groove-400 hover:text-groove-100 hover:bg-groove-600 transition-colors"
                   aria-label="Dismiss"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -105,15 +105,15 @@ export function UpdateBanner() {
 
       default:
         return (
-          <div className="glass-popover rounded-mac-xl px-4 py-3 shadow-mac-xl border border-white/[0.08] noise-texture">
+          <div className="glass-popover rounded-radius-xl px-4 py-3 shadow-warm-lg border border-groove-500/20 noise-texture">
             <div className="flex items-center gap-3">
               {status === 'checking' ? (
-                <Loader2 className="w-4 h-4 animate-spin text-mac-blue flex-shrink-0" />
+                <Loader2 className="w-4 h-4 animate-spin text-emerald flex-shrink-0" />
               ) : (
-                <Download className="w-4 h-4 text-mac-blue flex-shrink-0" />
+                <Download className="w-4 h-4 text-emerald flex-shrink-0" />
               )}
               <div className="flex-1 min-w-0">
-                <p className="text-[13px] text-white/80 font-medium truncate">
+                <p className="text-[13px] text-groove-100 font-medium truncate">
                   {status === 'checking'
                     ? 'Checking for updates…'
                     : version
@@ -122,15 +122,15 @@ export function UpdateBanner() {
                 </p>
                 {showProgress && progress && (
                   <div className="mt-1.5 flex items-center gap-2">
-                    <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
+                    <div className="flex-1 h-1 bg-groove-700 rounded-full overflow-hidden">
                       <motion.div
-                        className="h-full bg-mac-blue rounded-full"
+                        className="h-full bg-emerald rounded-full"
                         initial={{ width: 0 }}
                         animate={{ width: `${Math.min(progress.percent, 100)}%` }}
                         transition={{ duration: 0.3, ease: 'easeOut' }}
                       />
                     </div>
-                    <span className="text-[10px] text-white/40 tabular-nums flex-shrink-0 w-8 text-right">
+                    <span className="text-[10px] text-groove-400 tabular-nums flex-shrink-0 w-8 text-right">
                       {Math.round(progress.percent)}%
                     </span>
                   </div>

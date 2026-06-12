@@ -4,23 +4,41 @@ import { useDownloadStore } from '@/store/downloadStore';
 import { usePlayerStore } from '@/store/playerStore';
 import { useUIStore } from '@/store/uiStore';
 import { mediaResolver } from '@/services/mediaResolver';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 
-import { Music, Heart, Search, Download, ChevronUp, ChevronDown } from 'lucide-react';
+import {
+  Music,
+  Heart,
+  Search,
+  Download,
+  ChevronUp,
+  ChevronDown,
+  LayoutGrid,
+  LayoutList,
+} from 'lucide-react';
 import { ipc } from '@/utils/ipc';
 import { TrackRow } from '@/components/common/TrackRow';
+import { thumbGradient, thumbLetter } from '@/utils/thumb';
+import type { Track } from '@/types';
 
 /* ------------------------------------------------------------------ */
 /*  Types & constants                                                  */
 /* ------------------------------------------------------------------ */
 
-type SortField = 'title' | 'artist' | 'createdAt' | 'playCount' | 'duration';
+type SortField = 'title' | 'artist' | 'album' | 'createdAt' | 'playCount' | 'duration';
 type TabFilter = 'all' | 'liked' | 'downloaded';
 
-const TAB_ITEMS: { id: TabFilter; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'liked', label: 'Liked' },
-  { id: 'downloaded', label: 'Downloaded' },
+const TAB_ITEMS: { id: TabFilter; label: string; icon: React.ReactNode }[] = [
+  { id: 'all', label: 'All', icon: <Music className="w-4 h-4" /> },
+  { id: 'liked', label: 'Liked', icon: <Heart className="w-4 h-4" /> },
+  { id: 'downloaded', label: 'Saved', icon: <Download className="w-4 h-4" /> },
+];
+
+const SORT_OPTIONS: { field: SortField; label: string }[] = [
+  { field: 'title', label: 'Title' },
+  { field: 'artist', label: 'Artist' },
+  { field: 'duration', label: 'Duration' },
+  { field: 'playCount', label: 'Plays' },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -53,6 +71,13 @@ function formatRelativeDate(dateString: string | null | undefined): string {
   return `${Math.floor(diffMonth / 12)}y ago`;
 }
 
+function formatDuration(seconds: number): string {
+  if (!seconds || seconds <= 0) return '0:00';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Empty state icon                                                   */
 /* ------------------------------------------------------------------ */
@@ -60,15 +85,143 @@ function formatRelativeDate(dateString: string | null | undefined): string {
 function TabEmptyIcon({ tab }: { tab: TabFilter }) {
   const iconClass = 'w-7 h-7';
   return (
-    <div className="w-16 h-16 rounded-full bg-white/[0.04] flex items-center justify-center mb-4 ring-1 ring-white/[0.06]">
+    <div className="w-16 h-16 rounded-full bg-groove-700 flex items-center justify-center mb-4 ring-1 ring-groove-600">
       {tab === 'downloaded' ? (
-        <Download className={`${iconClass} text-white/20`} />
+        <Download className={`${iconClass} text-groove-400`} />
       ) : tab === 'liked' ? (
-        <Heart className={`${iconClass} text-red-500/30`} />
+        <Heart className={`${iconClass} text-danger/40`} />
       ) : (
-        <Music className={`${iconClass} text-white/20`} />
+        <Music className={`${iconClass} text-groove-400`} />
       )}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Sort Dropdown                                                      */
+/* ------------------------------------------------------------------ */
+
+function SortDropdown({
+  sortBy,
+  sortOrder,
+  onSort,
+}: {
+  sortBy: SortField;
+  sortOrder: 'asc' | 'desc';
+  onSort: (field: SortField) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const activeLabel = SORT_OPTIONS.find((o) => o.field === sortBy)?.label ?? 'Sort';
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-radius-sm bg-groove-700 text-groove-200 text-mac-body font-medium hover:bg-groove-600 transition-colors duration-150"
+        type="button"
+      >
+        {activeLabel}
+        {sortOrder === 'asc' ? (
+          <ChevronUp className="w-3 h-3 text-groove-400" />
+        ) : (
+          <ChevronDown className="w-3 h-3 text-groove-400" />
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-50 w-40 rounded-radius-md bg-groove-700 border border-groove-600 shadow-warm-lg py-1 animate-fade-in">
+          {SORT_OPTIONS.map((option) => (
+            <button
+              key={option.field}
+              onClick={() => {
+                onSort(option.field);
+                setOpen(false);
+              }}
+              className={`w-full flex items-center justify-between px-3 py-2 text-mac-body text-left transition-colors duration-100 ${
+                sortBy === option.field
+                  ? 'text-emerald bg-emerald-subtle'
+                  : 'text-groove-200 hover:bg-groove-600'
+              }`}
+              type="button"
+            >
+              {option.label}
+              {sortBy === option.field && (
+                <span className="text-emerald text-[10px] font-semibold">
+                  {sortOrder === 'asc' ? 'ASC' : 'DESC'}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Grid Card                                                          */
+/* ------------------------------------------------------------------ */
+
+function GridCard({
+  track,
+  isCurrent,
+  isPlaying,
+  onPlay,
+}: {
+  track: Track;
+  isCurrent: boolean;
+  isPlaying: boolean;
+  onPlay: () => void;
+}) {
+  const grad = thumbGradient(track.id);
+  const letter = thumbLetter(track.title || track.artist || '?');
+
+  return (
+    <button
+      onClick={onPlay}
+      className={`group w-40 rounded-radius-md overflow-hidden transition-all duration-150 text-left ${
+        isCurrent
+          ? 'ring-2 ring-emerald shadow-emerald-glow'
+          : 'hover:bg-groove-600'
+      }`}
+      type="button"
+    >
+      <div className="w-40 h-40 rounded-radius-md overflow-hidden bg-groove-700 mb-2">
+        {track.thumbnail ? (
+          <img src={track.thumbnail} alt="" className="w-full h-full object-cover" />
+        ) : (
+          <div
+            className="w-full h-full flex items-center justify-center"
+            style={{ background: grad }}
+          >
+            <span className="text-white/50 text-2xl font-bold">{letter}</span>
+          </div>
+        )}
+      </div>
+      <div className="px-1 pb-1">
+        <p
+          className={`text-mac-body font-semibold truncate ${
+            isCurrent ? 'text-emerald' : 'text-groove-100'
+          }`}
+        >
+          {track.title || 'Untitled'}
+        </p>
+        <p className="text-mac-caption text-groove-400 truncate">
+          {track.artist || 'Unknown'}
+        </p>
+      </div>
+    </button>
   );
 }
 
@@ -114,6 +267,8 @@ export function LibraryPage() {
   const toggleFavorite = useLibraryStore((s) => s.toggleFavorite);
   const tab = useUIStore((s) => s.libraryTab);
   const setTab = useUIStore((s) => s.setLibraryTab);
+  const viewMode = useUIStore((s) => s.viewMode);
+  const setViewMode = useUIStore((s) => s.setViewMode);
   const downloadEntries = useDownloadStore((s) => s.entries);
   const downloadTrack = useDownloadStore((s) => s.downloadTrack);
   const cancelDownload = useDownloadStore((s) => s.cancelDownload);
@@ -195,143 +350,101 @@ export function LibraryPage() {
     <div className="h-full flex flex-col relative z-10 pb-32">
       {/* ── Header ──────────────────────────────────────────── */}
       <div className="px-6 pt-14 pb-0 drag-region">
-        <h1 className="text-mac-hero text-white/90 tracking-tight mb-5 no-drag">
-          Your Library
+        <h1 className="text-mac-hero text-groove-50 tracking-tight mb-5 no-drag">
+          Your Collection
         </h1>
 
-        {/* ── Tab chips — macOS Segmented Control style ───────── */}
-        <div className="flex items-center gap-0.5 mb-4 no-drag p-0.5 rounded-radius-lg bg-white/[0.04] w-fit border border-white/[0.04]">
+        {/* ── Tab cards ──────────────────────────────────────── */}
+        <div className="flex items-center gap-3 mb-4 no-drag">
           {TAB_ITEMS.map((item) => {
             const active = tab === item.id;
             return (
               <button
                 key={item.id}
                 onClick={() => setTab(item.id)}
-                className={`relative px-4 py-1.5 rounded-radius-sm text-sm font-medium transition-all duration-150 ease-apple ${
+                className={`flex flex-col items-center justify-center w-20 h-[60px] rounded-radius-md transition-all duration-150 ease-apple ${
                   active
-                    ? 'bg-white/[0.12] text-white shadow-sm'
-                    : 'text-white/50 hover:text-white/70 hover:bg-white/[0.04]'
+                    ? 'bg-emerald-subtle text-emerald'
+                    : 'bg-groove-700 text-groove-300 hover:bg-groove-600'
                 }`}
                 type="button"
               >
-                {item.label}
-                <span
-                  className={`ml-1.5 text-[10px] font-semibold ${
-                    active ? 'text-white/50' : 'text-white/25'
-                  }`}
-                >
-                  {tabCount(item.id)}
-                </span>
+                {item.icon}
+                <span className="text-mac-body font-medium mt-1">{item.label}</span>
+                <span className="text-mac-caption text-groove-400">{tabCount(item.id)}</span>
               </button>
             );
           })}
         </div>
 
-        {/* ── Search + Sort row ─────────────────────────────── */}
+        {/* ── Search + Sort + View row ─────────────────────── */}
         <div className="flex items-center gap-3 mb-1 no-drag">
           {/* Search input */}
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30 pointer-events-none" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-groove-400 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search in library..."
-              className="w-full pl-9 pr-4 py-2 rounded-radius-sm bg-dark-quinary text-label-dark-primary placeholder-label-dark-tertiary text-sm outline-none border border-white/[0.06] focus:border-accent/50 focus:shadow-[0_0_0_3px_rgba(0,135,255,0.3)] transition-all duration-150"
+              placeholder="Search in collection..."
+              className="w-full pl-9 pr-4 py-2 rounded-radius-sm bg-groove-700 text-groove-100 placeholder-groove-400 text-sm outline-none border border-groove-600 focus:border-emerald/50 focus:shadow-[0_0_0_3px_rgba(16,185,129,0.15)] transition-all duration-150"
             />
           </div>
 
-          {/* Sort pills */}
-          <div className="flex items-center gap-1">
-              {(
-                [
-                  ['title', 'Title'],
-                  ['artist', 'Artist'],
-                  ['duration', 'Length'],
-                  ['playCount', 'Plays'],
-                ] as const
-              ).map(([field, label]) => (
-              <button
-                key={field}
-                onClick={() => handleSort(field)}
-                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-radius-sm text-xs font-medium transition-all duration-150 ease-apple ${
-                  sortBy === field
-                    ? 'bg-white/12 text-white'
-                    : 'text-white/40 hover:text-white/60 hover:bg-white/[0.04]'
-                }`}
-                type="button"
-              >
-                {label}
-                {sortBy === field && (
-                  <span className="flex items-center">
-                    {sortOrder === 'asc' ? (
-                      <ChevronUp className="w-3 h-3" />
-                    ) : (
-                      <ChevronDown className="w-3 h-3" />
-                    )}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
+          {/* Sort dropdown */}
+          <SortDropdown sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} />
+
+          {/* View toggle */}
+          <button
+            onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
+            className={`p-2 rounded-radius-sm transition-colors duration-150 ${
+              viewMode === 'grid'
+                ? 'text-emerald bg-emerald-subtle'
+                : 'text-groove-300 hover:bg-groove-700'
+            }`}
+            type="button"
+            title={viewMode === 'list' ? 'Switch to grid view' : 'Switch to list view'}
+          >
+            {viewMode === 'list' ? (
+              <LayoutGrid className="w-4 h-4" />
+            ) : (
+              <LayoutList className="w-4 h-4" />
+            )}
+          </button>
 
           {/* ── Resolve missing YouTube IDs ───────────────────── */}
           {!resolving && (
             <button
               onClick={() => resolveMissingIds()}
-              className="text-xs text-white/30 hover:text-white/60 transition-colors duration-150 px-2 py-1.5 rounded-radius-sm hover:bg-white/[0.04]"
+              className="text-xs text-groove-400 hover:text-groove-200 transition-colors duration-150 px-2 py-1.5 rounded-radius-sm hover:bg-groove-700"
               type="button"
             >
               Fix
             </button>
           )}
           {resolving && (
-            <span className="text-xs text-white/30 animate-pulse px-2">
+            <span className="text-xs text-groove-400 animate-pulse px-2">
               Fixing…
             </span>
           )}
         </div>
       </div>
 
-      {/* ── Column headers ──────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-6 py-2 mx-6 mt-2 border-b border-white/[0.06]">
-        <span className="w-8 text-mac-caption text-white/30 text-right uppercase tracking-wider font-semibold">
-          #
-        </span>
-        <span className="w-11 flex-shrink-0" /> {/* thumbnail spacer */}
-        <span className="flex-1 text-mac-caption text-white/30 uppercase tracking-wider font-semibold">
-          Title
-        </span>
-        <span className="w-36 hidden lg:block text-mac-caption text-white/30 uppercase tracking-wider font-semibold">
-          Artist
-        </span>
-        {tab === 'downloaded' ? (
-          <span className="w-24 text-right text-mac-caption text-white/30 uppercase tracking-wider font-semibold hidden md:block">
-            Size
-          </span>
-        ) : showDurationColumn(tab) ? (
-          <span className="w-14 text-right text-mac-caption text-white/30 uppercase tracking-wider font-semibold hidden sm:block">
-            Time
-          </span>
-        ) : null}
-        <span className="w-10" /> {/* action spacer */}
-      </div>
-
-      {/* ── Track list (CSS entrance, no framer-motion) ──────── */}
+      {/* ── Track list / Grid ──────────────────────────────── */}
       <div className="flex-1 overflow-y-auto overscroll-contain">
         {filteredTracks.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 animate-fade-in">
             <TabEmptyIcon tab={tab} />
-            <p className="text-white/50 font-medium text-mac-body">
+            <p className="text-groove-200 font-medium text-mac-body">
               {searchQuery
                 ? 'No songs match your search'
                 : tab === 'liked'
                   ? 'No liked songs yet'
                   : tab === 'downloaded'
-                    ? 'No downloaded songs yet'
-                    : 'Your library is empty'}
+                    ? 'No saved songs yet'
+                    : 'Your collection is empty'}
             </p>
-            <p className="text-sm text-white/25 mt-1.5 max-w-xs text-center leading-relaxed">
+            <p className="text-sm text-groove-400 mt-1.5 max-w-xs text-center leading-relaxed">
               {tab === 'liked'
                 ? 'Heart a song to add it here'
                 : tab === 'downloaded'
@@ -339,7 +452,27 @@ export function LibraryPage() {
                   : 'Search for music to get started'}
             </p>
           </div>
+        ) : viewMode === 'grid' ? (
+          /* ── Grid view ──────────────────────────────────────── */
+          <div className="grid grid-cols-4 gap-4 px-6 py-4 animate-fade-in">
+            {filteredTracks.map((track) => {
+              const isCurrent = currentTrack?.id === track.id;
+              return (
+                <GridCard
+                  key={track.id}
+                  track={track}
+                  isCurrent={isCurrent}
+                  isPlaying={isCurrent && isPlaying}
+                  onPlay={() => {
+                    const idx = filteredTracks.findIndex((t) => t.id === track.id);
+                    playTracks(filteredTracks, idx >= 0 ? idx : 0);
+                  }}
+                />
+              );
+            })}
+          </div>
         ) : (
+          /* ── List view ──────────────────────────────────────── */
           <div className="animate-fade-in">
             {filteredTracks.map((track, i) => {
               const isCurrent = currentTrack?.id === track.id;
@@ -390,10 +523,4 @@ export function LibraryPage() {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Helpers                                                            */
-/* ------------------------------------------------------------------ */
 
-function showDurationColumn(tab: TabFilter): boolean {
-  return tab !== 'downloaded';
-}
