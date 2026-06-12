@@ -28,6 +28,13 @@ import * as path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import type { MediaSource } from '../utils/types';
 import { getVerifiedTrack, setVerifiedTrack, getCachedStreamUrl, setCachedStreamUrl, getDownloadedFilePath } from '../utils/database';
+import {
+  computeTrustScore,
+  computeDurationClosenessScore,
+  getOfficialDuration,
+  filterByExactDuration,
+  computeMultiFactorScore,
+} from '../utils/searchMatching';
 
 const execFileAsync = promisify(execFile);
 
@@ -643,42 +650,24 @@ class MediaResolver {
   }
 
   /**
-   * Quick trust check for recovery results — avoids live/concert recordings.
-   */
-  private isOfficialSong(title: string, channel: string): boolean {
-    const t = title.toLowerCase();
-    const c = channel.toLowerCase();
-    // Topic channel = gold standard
-    if (c.includes(' - topic')) return true;
-    // Blatant live/concert
-    if (/\b(live|concert)\b/i.test(t)) return false;
-    if (/\blive\s+(at|from|in|session|version|performance)\b/i.test(t)) return false;
-    // Artist name has live/concert (non-Topic channels)
-    if (/\b(live|concert)\b/i.test(c) && !c.includes(' - topic')) return false;
-    // Prefer official or audio keywords
-    if (/\bofficial\s+(audio|video|music)\b/i.test(t)) return true;
-    return false;
-  }
-
-  /**
    * Auto-recovery: search YouTube Music for the official audio track.
    *
-   * Uses ytmusic-api (not yt-dlp) because it's much better at finding
-   * the canonical song entry. Searches for "Artist Title" and returns
-   * the result whose duration most closely matches the official track
-   * length, preferring official/Topic channel uploads.
-   *
-   * Duration matching is STRICT (±1 second) — only exact-length tracks
-   * are considered to avoid playing wrong versions.
+   * Uses the shared multi-factor scoring pipeline to rank results by:
+   *   1. Duration closeness (exact match = 100+ points)
+   *   2. Trust score (Topic channels, official audio keywords, etc.)
+   *   3. Title/artist similarity to the query
+   *   4. Native YouTube Music position (tiebreaker)
    *
    * @param artist - Artist name from the track metadata.
    * @param title  - Song title from the track metadata.
-   * @param expectedDuration - Official track duration in seconds. When
-   *   provided, results are FIRST FILTERED by duration match (±1s strict),
-   *   then ranked by official-ness and duration closeness.
+   * @param expectedDuration - Official track duration in seconds.
    * @returns      - A YouTube video ID, or null if no result found.
    */
-  private async searchOfficialSong(artist: string, title: string, expectedDuration?: number): Promise<string | null> {
+  private async searchOfficialSong(
+    artist: string,
+    title: string,
+    expectedDuration?: number,
+  ): Promise<string | null> {
     try {
       const mod = await import('ytmusic-api');
       const YTMusic = mod.default;
@@ -687,74 +676,73 @@ class MediaResolver {
 
       const query = `${artist} ${title}`.trim();
       const results = await yt.searchSongs(query);
-
       if (!results || results.length === 0) return null;
 
-      // Helper: check if result duration matches expected EXACTLY
-      // (integer-second tolerance — round both sides because YouTube can
-      // return float durations like 180.3 for a 3:00 song)
-      const durationMatches = (r: any): boolean => {
-        if (!expectedDuration) return true;
-        const d = r.duration ?? 0;
-        if (!d || d <= 0) return false;
-        return Math.abs(Math.round(d) - Math.round(expectedDuration)) <= 1;
-      };
+      // Step 1: Compute trust scores for ALL results
+      const scored = results.map((r: any, i: number) => ({
+        r,
+        trustScore: computeTrustScore(
+          r.name || r.title || '',
+          r.artist?.name || '',
+          r.duration ?? 0,
+        ),
+        rankScore: 0,
+      }));
 
-      // Rank results by how closely their duration matches the official length.
-      // Returns the closest match (smallest absolute difference).
-      const byDurationCloseness = (results: any[]): any[] => {
-        if (!expectedDuration) return results;
-        return [...results].sort((a, b) => {
-          const dA = Math.round(a.duration ?? 0);
-          const dB = Math.round(b.duration ?? 0);
-          const target = Math.round(expectedDuration);
-          return Math.abs(dA - target) - Math.abs(dB - target);
+      // Step 2: Determine official duration from trust-weighted voting
+      const computedOfficial = getOfficialDuration(
+        scored.map(s => ({ duration: s.r.duration ?? 0, score: s.trustScore })),
+      );
+
+      // Use computed official if available, else fall back to expectedDuration
+      const targetDuration = computedOfficial > 0 ? computedOfficial : (expectedDuration ?? 0);
+      if (targetDuration <= 0) return null;
+
+      // Step 3: Score ALL results using the full multi-factor score
+      const queryStr = query;
+      for (let i = 0; i < scored.length; i++) {
+        scored[i].rankScore = computeMultiFactorScore({
+          duration: scored[i].r.duration ?? 0,
+          query: queryStr,
+          artist: scored[i].r.artist?.name || '',
+          trustScore: scored[i].trustScore,
+          nativePosition: i,
+          officialDuration: targetDuration,
         });
-      };
-
-      // Pick the best result from a filtered list using duration closeness
-      const pickBest = (candidates: any[]): string | null => {
-        const sorted = byDurationCloseness(candidates);
-        return sorted.length > 0 ? sorted[0].videoId : null;
-      };
-
-      // FIRST: Filter by duration match (primary filter)
-      const durationMatched = results.filter(r => durationMatches(r));
-      
-      if (durationMatched.length === 0) {
-        console.log('[MediaResolver] No results match expected duration, falling back to all results');
-        // Fallback: if no duration matches, use all results but still rank by duration closeness
-        return pickBest(results);
       }
 
-      // SECOND: Categorize duration-matched results by official-ness
-      const official: any[] = [];
-      const nonLive: any[] = [];
+      // Step 4: Sort by multi-factor score descending
+      // Exact-duration matches score 100+ from factor 1 + tiebreakers
+      // Non-matches score 0 on factor 1 → always rank below
+      scored.sort((a, b) => b.rankScore - a.rankScore);
 
-      for (const r of durationMatched) {
-        const channelName = r.artist?.name || '';
-        const songTitle = r.name || '';
-        const titleLower = (r.name || '').toLowerCase();
-        const isNonLive = !/\b(live|concert)\b/i.test(titleLower);
+      // Step 5: Filter to trust-passing results only
+      const trustFiltered = scored
+        .filter(s => s.trustScore >= 15)
+        .map(s => s.r);
 
-        if (songTitle && this.isOfficialSong(songTitle, channelName)) {
-          official.push(r);
-        } else if (isNonLive) {
-          nonLive.push(r);
-        }
+      // Step 6: Filter to exact duration matches only
+      const durationMatched = filterByExactDuration(trustFiltered, targetDuration);
+
+      if (durationMatched.length > 0) {
+        console.log(
+          `[MediaResolver] Recovery found ${durationMatched.length} exact-duration match(es) for "${query}"`,
+        );
+        return durationMatched[0].videoId || durationMatched[0].id || null;
       }
 
-      // Pass 1: Official song (Topic channel, not live) WITH matching duration
-      //          pick the one closest to the official length
-      const best = pickBest(official);
-      if (best) return best;
+      // Last resort: if no exact-duration match, use best multi-factor result
+      // (might still be wrong length, but better than nothing)
+      const alternative = filterByExactDuration(
+        scored.map(s => s.r),
+        targetDuration,
+      );
+      if (alternative.length > 0) {
+        return alternative[0].videoId || alternative[0].id || null;
+      }
 
-      // Pass 2: Any non-live result with matching duration — pick closest
-      const bestNonLive = pickBest(nonLive);
-      if (bestNonLive) return bestNonLive;
-
-      // Pass 3: If no non-live, fall back to any duration-matched result
-      return pickBest(durationMatched);
+      console.log(`[MediaResolver] Recovery found no matches for "${query}"`);
+      return null;
     } catch (err) {
       console.error('[MediaResolver] Recovery search failed:', err instanceof Error ? err.message : err);
       return null;

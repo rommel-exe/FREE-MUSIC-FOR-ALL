@@ -3,6 +3,13 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { SearchResult } from '../utils/types';
 import { getVerifiedTrack, setVerifiedTrack, getVerifiedTracksBatch, clearExpiredVerifiedTracks } from '../utils/database';
+import {
+  computeTrustScore,
+  computeDurationClosenessScore,
+  getOfficialDuration,
+  filterByExactDuration,
+  computeMultiFactorScore,
+} from '../utils/searchMatching';
 
 const execFileAsync = promisify(execFile);
 
@@ -26,117 +33,6 @@ async function getYTMusic(): Promise<any> {
 
 const searchCache = new Map<string, { results: SearchResult[]; ts: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
-// ═══════════════════════════════════════════════════════════════════════════
-//  Trust Score Engine
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Compute a trust score for a search result.
- *
- * NOTE: ytmusic-api v5 returns artist names WITHOUT the " - Topic" suffix
- * that YouTube uses for auto-generated channels. The Topic channel bonus
- * (+100) rarely applies here. A typical clean (non-penalised) result
- * scores 15 (duration + artist metadata). We set the threshold at 15 so
- * that any result without penalty words passes through.
- *
- * Score components:
- *   Official Audio             +50
- *   "(audio)" in title         +40
- *   VEVO                       +20
- *   Duration sweet spot        +10
- *   Has artist metadata         +5
- *                              ═══
- *   Max possible               105
- *
- *   Live / Concert             -1000
- *   "at ..." venue pattern      -800  (e.g. "Live at Madison Square Garden")
- *   Acoustic / stripped         -500
- *   Remix                       -500
- *   Cover                       -500
- *   Karaoke / Instrumental      -500
- *   Nightcore / Sped/Slowed     -300
- *   Loop / Hour compilations    -300
- *   Lyric video (non-official)  -200
- *
- *   Threshold: score >= 15 → keep
- *              score < 15  → discard
- *
- * Also checks the ARTIST name — if the channel name contains "live" or
- * "concert" it's heavily penalised.
- */
-function computeTrustScore(result: Pick<SearchResult, 'title' | 'artist' | 'duration'>): number {
-  const titleLower = result.title.toLowerCase();
-  const artistLower = result.artist.toLowerCase();
-  let score = 0;
-
-  // ── Quality signals ──
-  if (artistLower.includes(' - topic'))       score += 100;
-  if (/\bofficial\s+audio\b/i.test(titleLower)) score += 50;
-  if (/\(audio\)/i.test(titleLower))          score += 40;
-  if (artistLower.includes('vevo'))            score += 20;
-
-  // Duration sweet spot
-  if (result.duration >= 120 && result.duration <= 360) {
-    score += 10;
-  } else if (result.duration >= 60 && result.duration < 120) {
-    score += 5;
-  } else if (result.duration > 360 && result.duration <= 480) {
-    score += 5;
-  }
-
-  // Has artist metadata
-  if (result.artist && result.artist.length > 0) score += 5;
-
-  // ── Penalties ──
-
-  // Live / Concert in TITLE — the strongest signal for unwanted recordings
-  if (/\b(live|concert)\b/i.test(titleLower))               score -= 1000;
-
-  // "Live at ..." / "Live from ..." patterns
-  if (/\blive\s+(at|from|in|session|version|performance|recording)\b/i.test(titleLower)) score -= 800;
-
-  // Artist/channel name contains live/concert (but NOT a Topic channel)
-  if (/\b(live|concert)\b/i.test(artistLower) && !artistLower.includes(' - topic')) score -= 500;
-
-  if (/\b(remix|remixed)\b/i.test(titleLower))              score -= 500;
-  if (/\bcover\b/i.test(titleLower))                         score -= 500;
-  if (/\b(karaoke|instrumental)\b/i.test(titleLower))       score -= 500;
-
-  // Acoustic / stripped versions — often fan recordings or alternate versions
-  if (/\b(acoustic|stripped|unplugged)\b/i.test(titleLower)) score -= 500;
-
-  if (/\b(nightcore|sped\s*up|slowed|reverb)\b/i.test(titleLower)) score -= 300;
-  if (/\b(1\s*hour|10\s*hours|loop|compilation|megamix)\b/i.test(titleLower)) score -= 300;
-  if (/\blyric\s+video\b/i.test(titleLower) && !/\bofficial\b/i.test(titleLower)) score -= 200;
-
-  return score;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-//  Duration Closeness Score
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Compute a duration closeness score (0 or 100) — EXACT match only.
- *
- * BINARY: either the duration is identical to the official track length
- * or it's the wrong track. No graduated tiers. No "close enough".
- * Song length is definitive.
- *
- *   Exact match (0s diff)  → 100  — the one true track
- *   Anything else          →   0  — wrong track, period
- */
-function computeDurationClosenessScore(duration: number, officialDuration: number): number {
-  if (officialDuration <= 0 || duration <= 0) return 0;
-  // Round both to integer seconds — YouTube returns float durations (e.g.
-  // 180.3) and getOfficialDuration rounds to integers. Without rounding
-  // here, correct tracks with fractional-second durations get score 0 and
-  // are outranked by wrong tracks at the exact integer.
-  // Use <= 1 tolerance because different platforms (Spotify, YouTube)
-  // can report the same track with a 1-second difference.
-  return Math.abs(Math.round(duration) - Math.round(officialDuration)) <= 1 ? 100 : 0;
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  View Count Extraction from Raw API Response
@@ -288,143 +184,6 @@ function getBestThumbnail(
   return '';
 }
 
-/**
- * Compute a ranking score for a search result.
- *
- * EXACT DURATION MATCH is the ONLY signal that matters (100 out of max 170 pts).
- * If the duration doesn't match exactly, the result scores 0 on the dominant
- * factor and can never catch up — everything else is just a tiebreaker among
- * exact matches.
- *
- *   Signal                      Max    Why
- *   ────────────────────────────────────────────────────────────
- *   1. Duration exact match     100    Must be THE EXACT track
- *   2. Native position (YT)      30    YT's own relevance ranking
- *   3. View count (log)          20    Popularity = likely correct
- *   4. Artist match              20    Query mentions artist name
- *   5. Trust score contribution   0    Duration already confirms it
- *                                ───
- *   TOTAL                       170
- *
- * A wrong-duration track gets 0 from factor 1. Even with max everything
- * else (30+20+20=70), it can't beat a single exact-match track with score
- * 100+0+0+0=100. This guarantees that exact-length tracks ALWAYS rank first.
- */
-function computeMultiFactorScore(
-  result: SearchResult,
-  query: string,
-  viewCount: number | undefined,
-  trustScore: number,
-  nativePosition: number,
-  officialDuration: number,
-): number {
-  const queryLower = query.toLowerCase().trim();
-  const artistLower = result.artist.toLowerCase();
-  const queryWords = queryLower.split(/\s+/).filter(Boolean);
-
-  let score = 0;
-
-  // ── 1. Duration closeness (0-100) — PRIMARY signal ──
-  // Song length is the single best indicator of "is this the actual track".
-  // More important than everything else combined.
-  score += computeDurationClosenessScore(result.duration, officialDuration);
-
-  // ── 2. Native position (0-30) — YT Music's own ranking ──
-  score += Math.max(0, 30 - nativePosition * 0.3);
-
-  // ── 3. View count (log scale, 0-20) — popularity boost ──
-  if (viewCount && viewCount > 0) {
-    const logViews = Math.log10(viewCount);
-    score += Math.min(20, (logViews / 9) * 20);
-  }
-
-  // ── 4. Artist match (0-20) — query explicitly names this artist ──
-  if (artistLower && queryLower.includes(artistLower)) {
-    score += 20;
-  } else if (artistLower && queryWords.length > 0) {
-    const artistWords = artistLower.split(/\s+/);
-    const matchedArtist = queryWords.filter(w =>
-      artistWords.some(aw => aw.includes(w)),
-    ).length;
-    if (matchedArtist > 0) {
-      score += Math.min(20, matchedArtist * 7);
-    }
-  }
-
-  // ── 5. Trust score contribution (0-10) ──
-  score += Math.max(0, Math.min(100, trustScore)) * 0.1;
-
-  return score;
-}
-
-/**
- * Determine the official/canonical duration from scored search results.
- *
- * Uses TRUST-WEIGHTED mode: each duration vote is weighted by the result's
- * trust score. High-trust results (official audio +50, Topic channel +100)
- * dominate over low-trust generic uploads (score ~15). This prevents a
- * group of low-trust wrong-duration results from hijacking the official length.
- *
- * Only considers results with trust score >= 15 (passing the filter) to avoid
- * contamination from penalised results.
- *
- * Returns the mode duration in seconds, or 0 if no valid duration found.
- */
-function getOfficialDuration(
-  scored: Array<{ r: SearchResult; score: number }>,
-): number {
-  // Weight each duration by trust score so high-trust results (official audio,
-  // Topic channel) dominate over low-trust results (generic uploads).
-  const durationWeight = new Map<number, number>();
-  for (const { r, score } of scored) {
-    if (r.duration <= 0 || score < 15) continue;
-    const dur = Math.round(r.duration);
-    // Weight by trust score: official audio (score 65) gets 4x the weight of
-    // a bare-minimum result (score 15). Topic channels (score 115) get ~8x.
-    durationWeight.set(dur, (durationWeight.get(dur) ?? 0) + score);
-  }
-
-  if (durationWeight.size === 0) return 0;
-
-  // Find the duration with the highest weighted score
-  let modeDuration = 0;
-  let maxWeight = 0;
-  for (const [dur, weight] of durationWeight) {
-    // Tie-break: prefer the shorter duration (avoids picking an hour-long loop)
-    if (weight > maxWeight || (weight === maxWeight && dur < modeDuration)) {
-      maxWeight = weight;
-      modeDuration = dur;
-    }
-  }
-
-  return modeDuration;
-}
-
-/**
- * Filter search results to ONLY include tracks matching the EXACT official duration.
- *
- * This ensures only tracks that match the EXACT length of the official track
- * on YouTube Music will be played. Covers, remixes, live versions, and other
- * variants with different durations are excluded.
- *
- * Uses ZERO tolerance — the duration must be exactly identical. YouTube
- * reports integer seconds, so if two tracks have the same duration in
- * seconds they are the same recording.
- * If no results match, returns an empty array — better to show nothing
- * than to play wrong-duration tracks.
- */
-function filterByExactDuration(
-  results: SearchResult[],
-  officialDuration: number,
-): SearchResult[] {
-  if (officialDuration <= 0) return results;
-
-  return results.filter(r => {
-    if (r.duration <= 0) return false;
-    return Math.abs(Math.round(r.duration) - Math.round(officialDuration)) <= 1;
-  });
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 //  Search
 // ═══════════════════════════════════════════════════════════════════════════
@@ -515,14 +274,14 @@ async function searchMusic(query: string, limit: number): Promise<SearchResult[]
     // and trust score are tiebreakers for equally-close matches.
     const scored = unique.map((r, i) => ({
       r,
-      trustScore: computeTrustScore(r),
+      trustScore: computeTrustScore(r.title, r.artist, r.duration),
       rankScore: 0,
     }));
 
     // Compute official duration BEFORE scoring so it can be used as the
     // primary ranking signal (not just a post-hoc filter).
     const officialDuration = getOfficialDuration(
-      scored.map(s => ({ r: s.r, score: s.trustScore })),
+      scored.map(s => ({ duration: s.r.duration, score: s.trustScore })),
     );
     const hasOfficialDuration = officialDuration > 0;
 
@@ -531,9 +290,15 @@ async function searchMusic(query: string, limit: number): Promise<SearchResult[]
     if (meaningfulViewCounts) {
       // Full scoring: duration closeness (0-100) + all tiebreakers
       for (let i = 0; i < scored.length; i++) {
-        scored[i].rankScore = computeMultiFactorScore(
-          scored[i].r, q, scored[i].r.viewCount, scored[i].trustScore, i, officialDuration,
-        );
+        scored[i].rankScore = computeMultiFactorScore({
+          duration: scored[i].r.duration,
+          query: q,
+          artist: scored[i].r.artist,
+          viewCount: scored[i].r.viewCount,
+          trustScore: scored[i].trustScore,
+          nativePosition: i,
+          officialDuration,
+        });
       }
       scored.sort((a, b) => b.rankScore - a.rankScore);
       console.log('[search] Ranked by duration closeness + multi-factor');
@@ -569,22 +334,28 @@ async function searchMusic(query: string, limit: number): Promise<SearchResult[]
 
     const scored = fallback.map((r, i) => ({
       r,
-      trustScore: computeTrustScore(r),
+      trustScore: computeTrustScore(r.title, r.artist, r.duration),
       rankScore: 0,
     }));
 
     // Compute official duration BEFORE scoring (same approach as primary path)
     const officialDuration = getOfficialDuration(
-      scored.map(s => ({ r: s.r, score: s.trustScore })),
+      scored.map(s => ({ duration: s.r.duration, score: s.trustScore })),
     );
     const hasOfficialDuration = officialDuration > 0;
     const meaningfulViewCounts = fallback.filter(r => (r.viewCount ?? 0) > 1000).length >= 3;
 
     if (meaningfulViewCounts) {
       for (let i = 0; i < scored.length; i++) {
-        scored[i].rankScore = computeMultiFactorScore(
-          scored[i].r, q, scored[i].r.viewCount, scored[i].trustScore, i, officialDuration,
-        );
+        scored[i].rankScore = computeMultiFactorScore({
+          duration: scored[i].r.duration,
+          query: q,
+          artist: scored[i].r.artist,
+          viewCount: scored[i].r.viewCount,
+          trustScore: scored[i].trustScore,
+          nativePosition: i,
+          officialDuration,
+        });
       }
       scored.sort((a, b) => b.rankScore - a.rankScore);
     } else {
@@ -688,7 +459,7 @@ async function verifySingleTrack(videoId: string, title: string, artist: string)
       hasAudio
     );
 
-    const trustScore = computeTrustScore({ title, artist, duration });
+    const trustScore = computeTrustScore(title, artist, duration);
 
     setVerifiedTrack({
       videoId,
