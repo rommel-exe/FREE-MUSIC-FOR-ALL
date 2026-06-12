@@ -64,7 +64,7 @@ function TabEmptyIcon({ tab }: { tab: TabFilter }) {
       {tab === 'downloaded' ? (
         <Download className={`${iconClass} text-white/20`} />
       ) : tab === 'liked' ? (
-        <Heart className={`${iconClass} text-mac-red/30`} />
+        <Heart className={`${iconClass} text-red-500/30`} />
       ) : (
         <Music className={`${iconClass} text-white/20`} />
       )}
@@ -194,20 +194,20 @@ export function LibraryPage() {
   return (
     <div className="h-full flex flex-col relative z-10 pb-32">
       {/* ── Header ──────────────────────────────────────────── */}
-      <div className="px-mac-xl pt-14 pb-0 drag-region">
-        <h1 className="text-mac-large-title text-white/90 tracking-tight mb-5 no-drag">
+      <div className="px-6 pt-14 pb-0 drag-region">
+        <h1 className="text-mac-hero text-white/90 tracking-tight mb-5 no-drag">
           Your Library
         </h1>
 
         {/* ── Tab chips — macOS Segmented Control style ───────── */}
-        <div className="flex items-center gap-0.5 mb-4 no-drag p-0.5 rounded-mac-lg bg-white/[0.04] w-fit border border-white/[0.04]">
+        <div className="flex items-center gap-0.5 mb-4 no-drag p-0.5 rounded-radius-lg bg-white/[0.04] w-fit border border-white/[0.04]">
           {TAB_ITEMS.map((item) => {
             const active = tab === item.id;
             return (
               <button
                 key={item.id}
                 onClick={() => setTab(item.id)}
-                className={`relative px-4 py-1.5 rounded-mac text-sm font-medium transition-all duration-mac ease-mac ${
+                className={`relative px-4 py-1.5 rounded-radius-sm text-sm font-medium transition-all duration-150 ease-apple ${
                   active
                     ? 'bg-white/[0.12] text-white shadow-sm'
                     : 'text-white/50 hover:text-white/70 hover:bg-white/[0.04]'
@@ -237,7 +237,7 @@ export function LibraryPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search in library..."
-              className="w-full pl-9 pr-4 py-2 mac-input text-sm rounded-mac"
+              className="w-full pl-9 pr-4 py-2 rounded-radius-sm bg-dark-quinary text-label-dark-primary placeholder-label-dark-tertiary text-sm outline-none border border-white/[0.06] focus:border-accent/50 focus:shadow-[0_0_0_3px_rgba(0,135,255,0.3)] transition-all duration-150"
             />
           </div>
 
@@ -254,7 +254,7 @@ export function LibraryPage() {
               <button
                 key={field}
                 onClick={() => handleSort(field)}
-                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-mac text-xs font-medium transition-all duration-mac ease-mac ${
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-radius-sm text-xs font-medium transition-all duration-150 ease-apple ${
                   sortBy === field
                     ? 'bg-white/12 text-white'
                     : 'text-white/40 hover:text-white/60 hover:bg-white/[0.04]'
@@ -279,7 +279,7 @@ export function LibraryPage() {
           {!resolving && (
             <button
               onClick={() => resolveMissingIds()}
-              className="text-xs text-white/30 hover:text-white/60 transition-colors duration-mac px-2 py-1.5 rounded-mac hover:bg-white/[0.04]"
+              className="text-xs text-white/30 hover:text-white/60 transition-colors duration-150 px-2 py-1.5 rounded-radius-sm hover:bg-white/[0.04]"
               type="button"
             >
               Fix
@@ -294,23 +294,23 @@ export function LibraryPage() {
       </div>
 
       {/* ── Column headers ──────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-mac-xl py-2 mx-mac-xl mt-2 border-b border-mac-separator">
-        <span className="w-8 text-mac-caption-2 text-white/30 text-right uppercase tracking-wider font-semibold">
+      <div className="flex items-center gap-3 px-6 py-2 mx-6 mt-2 border-b border-white/[0.06]">
+        <span className="w-8 text-mac-caption text-white/30 text-right uppercase tracking-wider font-semibold">
           #
         </span>
         <span className="w-11 flex-shrink-0" /> {/* thumbnail spacer */}
-        <span className="flex-1 text-mac-caption-2 text-white/30 uppercase tracking-wider font-semibold">
+        <span className="flex-1 text-mac-caption text-white/30 uppercase tracking-wider font-semibold">
           Title
         </span>
-        <span className="w-36 hidden lg:block text-mac-caption-2 text-white/30 uppercase tracking-wider font-semibold">
+        <span className="w-36 hidden lg:block text-mac-caption text-white/30 uppercase tracking-wider font-semibold">
           Artist
         </span>
         {tab === 'downloaded' ? (
-          <span className="w-24 text-right text-mac-caption-2 text-white/30 uppercase tracking-wider font-semibold hidden md:block">
+          <span className="w-24 text-right text-mac-caption text-white/30 uppercase tracking-wider font-semibold hidden md:block">
             Size
           </span>
         ) : showDurationColumn(tab) ? (
-          <span className="w-14 text-right text-mac-caption-2 text-white/30 uppercase tracking-wider font-semibold hidden sm:block">
+          <span className="w-14 text-right text-mac-caption text-white/30 uppercase tracking-wider font-semibold hidden sm:block">
             Time
           </span>
         ) : null}
@@ -318,7 +318,7 @@ export function LibraryPage() {
       </div>
 
       {/* ── Track list (CSS entrance, no framer-motion) ──────── */}
-      <div className="flex-1 overflow-y-auto scroll-edge-bottom overscroll-contain">
+      <div className="flex-1 overflow-y-auto overscroll-contain">
         {filteredTracks.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 animate-fade-in">
             <TabEmptyIcon tab={tab} />

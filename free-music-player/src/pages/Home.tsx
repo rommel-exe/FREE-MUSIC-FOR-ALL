@@ -65,7 +65,7 @@ function ScrollRow({ children, className = '' }: { children: React.ReactNode; cl
       {canScrollLeft && (
         <button
           onClick={() => scroll(-1)}
-          className="absolute left-0 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full glass-elevated flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-all duration-mac ease-mac hover:scale-110 active:scale-95 shadow-mac-lg"
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full glass-floating flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-all duration-150 ease-apple hover:scale-110 active:scale-95 shadow-lg"
           type="button"
           aria-label="Scroll left"
         >
@@ -78,7 +78,7 @@ function ScrollRow({ children, className = '' }: { children: React.ReactNode; cl
       {canScrollRight && (
         <button
           onClick={() => scroll(1)}
-          className="absolute right-0 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full glass-elevated flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-all duration-mac ease-mac hover:scale-110 active:scale-95 shadow-mac-lg"
+          className="absolute right-0 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full glass-floating flex items-center justify-center opacity-0 group-hover/row:opacity-100 transition-all duration-150 ease-apple hover:scale-110 active:scale-95 shadow-lg"
           type="button"
           aria-label="Scroll right"
         >
@@ -116,9 +116,9 @@ function SquareCard({
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="flex-shrink-0 w-[180px] glass-card rounded-mac-lg p-3 group/card text-left cursor-pointer active:scale-[0.97] transition-all duration-mac ease-mac"
+      className="flex-shrink-0 w-[180px] glass-content rounded-radius-lg p-3 group/card text-left cursor-pointer active:scale-[0.97] transition-all duration-150 ease-apple"
     >
-      <div className="relative w-full aspect-square rounded-mac overflow-hidden mb-3 shadow-mac-lg">
+      <div className="relative w-full aspect-square rounded-radius-sm overflow-hidden mb-3 shadow-lg">
         {variant === 'liked' ? (
           <div className="w-full h-full bg-gradient-to-br from-purple-600 via-pink-500 to-rose-500 flex items-center justify-center">
             <Heart className="w-10 h-10 text-white fill-white/80" />
@@ -142,7 +142,7 @@ function SquareCard({
           }`}
         >
           <div
-            className={`w-12 h-12 rounded-full bg-mac-accent-green text-black flex items-center justify-center shadow-xl shadow-black/40 transition-all duration-mac ease-mac-bounce ${
+            className={`w-12 h-12 rounded-full bg-green-500 text-black flex items-center justify-center shadow-xl shadow-black/40 transition-all duration-150 ease-out ${
               hovered ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-2 opacity-0 scale-90'
             }`}
           >
@@ -153,7 +153,7 @@ function SquareCard({
 
       <div className="min-w-0">
         <div className="text-sm font-semibold text-white truncate leading-snug">{title}</div>
-        {subtitle && <div className="text-xs text-mac-tertiary truncate mt-1">{subtitle}</div>}
+        {subtitle && <div className="text-xs text-label-dark-tertiary truncate mt-1">{subtitle}</div>}
       </div>
     </button>
   );
@@ -179,19 +179,19 @@ function TopSongRow({
       onClick={onPlay}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="w-full flex items-center gap-4 px-3 py-2.5 rounded-mac hover:bg-white/[0.04] transition-all duration-mac ease-mac group"
+      className="w-full flex items-center gap-4 px-3 py-2.5 rounded-radius-sm hover:bg-white/[0.04] transition-all duration-150 ease-apple group"
     >
       {/* Number / Play icon */}
       <span className="w-7 text-center text-sm tabular-nums shrink-0 font-mono">
         {hovered ? (
-          <Play className="w-4 h-4 text-mac-accent-green inline fill-mac-accent-green" />
+          <Play className="w-4 h-4 text-green-500 inline fill-green-500" />
         ) : (
-          <span className="text-mac-quaternary">{index + 1}</span>
+          <span className="text-label-dark-quaternary">{index + 1}</span>
         )}
       </span>
 
       {/* Thumbnail (48px) */}
-      <div className="w-12 h-12 rounded-mac-sm bg-white/10 flex-shrink-0 overflow-hidden shadow-sm shadow-black/20">
+      <div className="w-12 h-12 rounded-radius-sm bg-white/10 flex-shrink-0 overflow-hidden shadow-sm shadow-black/20">
         {track.thumbnail ? (
           <img src={track.thumbnail} alt="" className="w-full h-full object-cover" />
         ) : (
@@ -204,11 +204,11 @@ function TopSongRow({
       {/* Title + Artist */}
       <div className="flex-1 min-w-0 text-left">
         <div className="text-sm font-medium text-white truncate leading-snug">{track.title}</div>
-        <div className="text-xs text-mac-tertiary truncate">{track.artist}</div>
+        <div className="text-xs text-label-dark-tertiary truncate">{track.artist}</div>
       </div>
 
       {/* Play count */}
-      <span className="text-xs text-mac-quaternary tabular-nums shrink-0 font-mono">
+      <span className="text-xs text-label-dark-quaternary tabular-nums shrink-0 font-mono">
         {track.playCount.toLocaleString()} plays
       </span>
     </button>
@@ -222,9 +222,9 @@ function TopSongRow({
 function SectionHeader({ title, showAll, onShowAll }: { title: string; showAll?: boolean; onShowAll?: () => void }) {
   return (
     <div className="flex items-center justify-between mb-4">
-      <h2 className="text-mac-title-2 text-white tracking-tight">{title}</h2>
+      <h2 className="text-mac-title text-white tracking-tight">{title}</h2>
       {showAll && (
-        <button onClick={onShowAll} className="mac-button-ghost text-mac-caption uppercase tracking-widest font-semibold hover:text-white/80" type="button">
+        <button onClick={onShowAll} className="flex items-center gap-2 rounded-radius-sm hover:bg-white/[0.06] px-2 py-1.5 transition-all duration-150 text-mac-caption uppercase tracking-widest font-semibold hover:text-white/80" type="button">
           Show all
         </button>
       )}
@@ -283,31 +283,31 @@ export function HomePage() {
       {/* ── Gradient hero background ── */}
       <div className="absolute inset-0 pointer-events-none z-0">
         <div className="absolute top-0 left-0 right-0 h-[420px] bg-gradient-to-b from-[#2a1545]/50 via-[#1a0f30]/30 to-transparent" />
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-mac-blue/5 rounded-full blur-[120px]" />
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-accent/5 rounded-full blur-[120px]" />
         <div className="absolute top-20 right-1/4 w-72 h-72 bg-mac-purple/5 rounded-full blur-[100px]" />
       </div>
 
       {/* ── Header ── */}
-      <div className="relative z-10 px-mac-xl pt-14 pb-2 drag-region">
-        <h1 className="text-mac-large-title text-white/90 tracking-tight no-drag">
+      <div className="relative z-10 px-6 pt-14 pb-2 drag-region">
+        <h1 className="text-mac-hero text-white/90 tracking-tight no-drag">
           Listen Now
         </h1>
-        <p className="text-mac-footnote text-white/30 mt-1 no-drag">
+        <p className="text-mac-subhead text-white/30 mt-1 no-drag">
           Discover your next favorite track
         </p>
       </div>
 
       {/* ── Main content (CSS entrance animation) ── */}
-      <div className="relative z-10 px-mac-xl animate-fade-in">
+      <div className="relative z-10 px-6 animate-fade-in">
         {/* ── Quick-play grid (2x3) ── */}
         {recentTracks.length > 0 && (
-          <div className="mb-mac-2xl">
+          <div className="mb-8">
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5">
               {recentTracks.slice(0, 6).map((track, i) => (
                 <button
                   key={track.id}
                   onClick={() => playTracks(recentTracks, i)}
-                  className="flex items-center gap-0 glass-card rounded-mac overflow-hidden h-[52px] group/quick hover:bg-white/[0.08] active:scale-[0.98] transition-all duration-mac ease-mac"
+                  className="flex items-center gap-0 glass-content rounded-radius-sm overflow-hidden h-[52px] group/quick hover:bg-white/[0.08] active:scale-[0.98] transition-all duration-150 ease-apple"
                   style={{ animationDelay: `${i * 50}ms` }}
                 >
                   <div className="w-13 h-13 flex-shrink-0 overflow-hidden shadow-sm shadow-black/20">
@@ -322,8 +322,8 @@ export function HomePage() {
                   <span className="flex-1 px-3.5 text-sm font-semibold text-white truncate text-left">
                     {track.title}
                   </span>
-                  <div className="pr-3 opacity-0 group-hover/quick:opacity-100 transition-all duration-mac ease-mac group-hover/quick:translate-x-0 -translate-x-1">
-                    <div className="w-9 h-9 rounded-full bg-mac-accent-green text-black flex items-center justify-center shadow-lg shadow-black/30">
+                  <div className="pr-3 opacity-0 group-hover/quick:opacity-100 transition-all duration-150 ease-apple group-hover/quick:translate-x-0 -translate-x-1">
+                    <div className="w-9 h-9 rounded-full bg-green-500 text-black flex items-center justify-center shadow-lg shadow-black/30">
                       <Play className="w-4 h-4 fill-current ml-0.5" />
                     </div>
                   </div>
@@ -334,7 +334,7 @@ export function HomePage() {
         )}
 
         {/* ── Sections ── */}
-        <div className="space-y-mac-2xl pb-8">
+        <div className="space-y-8 pb-8">
           {/* Recently Played */}
           {recentTracks.length > 0 && (
             <section>
@@ -408,7 +408,7 @@ export function HomePage() {
           {topTracks.length > 0 && (
             <section>
               <SectionHeader title="Your top songs" />
-              <div className="glass-card rounded-mac-lg p-2">
+              <div className="glass-content rounded-radius-lg p-2">
                 {topTracks.map((track, i) => (
                   <TopSongRow
                     key={track.id}
@@ -425,20 +425,20 @@ export function HomePage() {
           {isEmpty && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <div className="relative mb-8">
-                <div className="w-28 h-28 rounded-mac-2xl bg-gradient-to-br from-mac-blue/20 via-mac-purple/20 to-mac-accent-green/10 flex items-center justify-center border border-white/[0.06]">
-                  <Sparkles className="w-12 h-12 text-mac-blue/60" />
+                <div className="w-28 h-28 rounded-radius-xl bg-gradient-to-br from-accent/20 via-mac-purple/20 to-green-500/10 flex items-center justify-center border border-white/[0.06]">
+                  <Sparkles className="w-12 h-12 text-accent/60" />
                 </div>
-                <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-mac-accent-green/20 flex items-center justify-center">
-                  <Play className="w-3 h-3 text-mac-accent-green fill-mac-accent-green" />
+                <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center">
+                  <Play className="w-3 h-3 text-green-500 fill-green-500" />
                 </div>
               </div>
-              <h2 className="text-mac-title-1 text-white mb-2">Start listening</h2>
-              <p className="text-mac-body text-mac-tertiary mb-8 max-w-xs leading-relaxed">
+              <h2 className="text-mac-headline text-white mb-2">Start listening</h2>
+              <p className="text-mac-body text-label-dark-tertiary mb-8 max-w-xs leading-relaxed">
                 Search for songs to build your library and discover new music you&apos;ll love
               </p>
               <button
                 onClick={() => setPage('search')}
-                className="mac-button-primary rounded-full px-8 py-3 shadow-mac-sm text-sm font-semibold active:scale-[0.97] transition-transform duration-mac"
+                className="flex items-center gap-2 rounded-full bg-accent text-white text-sm font-semibold px-8 py-3 hover:bg-accent-hover active:bg-accent-active transition-all duration-150 shadow-sm active:scale-[0.97]"
               >
                 <Search className="w-4 h-4" />
                 Search Music

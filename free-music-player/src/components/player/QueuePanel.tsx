@@ -29,17 +29,17 @@ const EqualizerBars = memo(function EqualizerBars({
   return (
     <div className={`flex items-end gap-[2px] h-3.5 ${className}`}>
       <motion.span
-        className="w-[3px] rounded-full bg-mac-blue"
+        className="w-[3px] rounded-full bg-accent"
         animate={{ height: ['30%', '100%', '50%', '80%', '30%'] }}
         transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
       />
       <motion.span
-        className="w-[3px] rounded-full bg-mac-blue"
+        className="w-[3px] rounded-full bg-accent"
         animate={{ height: ['60%', '30%', '100%', '40%', '60%'] }}
         transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut', delay: 0.2 }}
       />
       <motion.span
-        className="w-[3px] rounded-full bg-mac-blue"
+        className="w-[3px] rounded-full bg-accent"
         animate={{ height: ['80%', '50%', '30%', '100%', '80%'] }}
         transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut', delay: 0.4 }}
       />
@@ -94,7 +94,7 @@ const QueueItem = memo(function QueueItem({
           onPlay(index);
         }
       }}
-      className={`group flex items-center gap-3 px-2 py-1.5 rounded-mac transition-all duration-mac ease-mac cursor-pointer
+      className={`group flex items-center gap-3 px-2 py-1.5 rounded-radius-sm transition-all duration-150 ease-apple cursor-pointer
         ${dragIndex === index ? 'opacity-40 scale-[0.98]' : ''}
         ${dragOverIndex === index ? 'border-t-2 border-mac-green/60' : 'border-t-2 border-transparent'}
         hover:bg-white/[0.04]`}
@@ -229,7 +229,7 @@ export const QueuePanel = memo(function QueuePanel() {
       animate={{ width: 320, opacity: 1 }}
       exit={{ width: 0, opacity: 0 }}
       transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] as const }}
-      className="glass-sidebar border-l border-mac-separator flex flex-col h-full overflow-hidden"
+      className="glass-sidebar border-l border-white/[0.06] flex flex-col h-full overflow-hidden"
     >
       <div className="w-80 flex flex-col h-full">
         {/* ── Header ─────────────────────────────────────── */}
@@ -237,7 +237,7 @@ export const QueuePanel = memo(function QueuePanel() {
           <h2 className="text-mac-headline text-white/90 font-semibold">
             Queue
             {currentTrack && (
-              <span className="text-mac-caption-2 text-white/30 font-mono tabular-nums ml-2">
+              <span className="text-mac-caption text-white/30 font-mono tabular-nums ml-2">
                 {upcoming.length}
               </span>
             )}
@@ -245,7 +245,7 @@ export const QueuePanel = memo(function QueuePanel() {
 
           <button
             onClick={toggleQueue}
-            className="p-1.5 -mr-1 rounded-mac text-white/40 hover:text-white hover:bg-white/[0.08] active:bg-white/[0.12] transition-all duration-mac"
+            className="p-1.5 -mr-1 rounded-radius-sm text-white/40 hover:text-white hover:bg-white/[0.08] active:bg-white/[0.12] transition-all duration-150"
             type="button"
             title="Close queue"
           >
@@ -256,11 +256,11 @@ export const QueuePanel = memo(function QueuePanel() {
         {/* ── Now Playing ────────────────────────────────── */}
         {currentTrack && (
           <div className="px-3 mb-3">
-            <div className="rounded-mac-xl bg-mac-blue/[0.08] border-l-2 border-mac-blue p-3.5">
+            <div className="rounded-radius-xl bg-accent/[0.08] border-l-2 border-accent p-3.5">
               <div className="flex items-center gap-3">
                 {/* 64px thumbnail */}
                 <div
-                  className="w-16 h-16 rounded-mac-lg flex-shrink-0 overflow-hidden"
+                  className="w-16 h-16 rounded-radius-lg flex-shrink-0 overflow-hidden"
                   style={{ background: thumbGradient(currentTrack.id) }}
                 >
                   {currentTrack.thumbnail ? (
@@ -278,7 +278,7 @@ export const QueuePanel = memo(function QueuePanel() {
 
                 {/* Info */}
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-mac-blue truncate">
+                  <div className="text-sm font-semibold text-accent truncate">
                     {currentTrack.title}
                   </div>
                   <div className="text-xs text-white/40 truncate">
@@ -291,7 +291,7 @@ export const QueuePanel = memo(function QueuePanel() {
                   {isPlaying ? (
                     <EqualizerBars />
                   ) : (
-                    <div className="w-1.5 h-1.5 rounded-full bg-mac-blue/50" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-accent/50" />
                   )}
                 </div>
               </div>
@@ -303,7 +303,7 @@ export const QueuePanel = memo(function QueuePanel() {
         <div className="flex-1 overflow-y-auto scrollbar-thin overscroll-contain">
           {upcoming.length > 0 ? (
             <div className="px-3 pt-3 pb-1">
-              <div className="text-mac-caption-2 font-semibold text-white/35 uppercase tracking-wider mb-1 select-none">
+              <div className="text-mac-caption font-semibold text-white/35 uppercase tracking-wider mb-1 select-none">
                 Up Next · {upcoming.length}
               </div>
 
@@ -331,7 +331,7 @@ export const QueuePanel = memo(function QueuePanel() {
                 <ListMusic className="w-7 h-7 text-white/15" />
               </div>
               <p className="text-mac-body text-white/35 font-medium">Queue is empty</p>
-              <p className="text-mac-footnote text-white/20 mt-1.5 leading-relaxed">
+              <p className="text-mac-subhead text-white/20 mt-1.5 leading-relaxed">
                 Add songs to see them here
               </p>
             </div>

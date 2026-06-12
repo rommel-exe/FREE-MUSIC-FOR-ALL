@@ -51,7 +51,7 @@ const LyricLineView = memo(function LyricLineView({
   index: number;
 }) {
   const baseClasses =
-    'transition-all duration-300 ease-out cursor-pointer select-none px-4 py-1 rounded-mac';
+    'transition-all duration-300 ease-out cursor-pointer select-none px-4 py-1 rounded-radius-sm';
 
   const stateClasses = synced
     ? isActive
@@ -149,7 +149,7 @@ export const LyricsPanel = memo(function LyricsPanel() {
       animate={{ width: 320, opacity: 1 }}
       exit={{ width: 0, opacity: 0 }}
       transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] as const }}
-      className="glass-sidebar border-l border-mac-separator flex flex-col h-full overflow-hidden"
+      className="glass-sidebar border-l border-white/[0.06] flex flex-col h-full overflow-hidden"
     >
       <div className="w-80 flex flex-col h-full">
         {/* ── Header ─────────────────────────────────────────── */}
@@ -185,7 +185,7 @@ export const LyricsPanel = memo(function LyricsPanel() {
 
             <button
               onClick={toggleLyrics}
-              className="relative p-1.5 -mr-1 rounded-mac text-white/40 hover:text-white hover:bg-white/[0.08] active:bg-white/[0.12] transition-all duration-mac"
+              className="relative p-1.5 -mr-1 rounded-radius-sm text-white/40 hover:text-white hover:bg-white/[0.08] active:bg-white/[0.12] transition-all duration-150"
               type="button"
               title="Close lyrics"
             >

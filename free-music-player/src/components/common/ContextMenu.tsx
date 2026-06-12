@@ -238,7 +238,7 @@ export function ContextMenu({
         }}
         className={
           triggerClassName ??
-          `p-1.5 rounded-mac-sm transition-all duration-150
+          `p-1.5 rounded-radius-sm transition-all duration-150
            hover:bg-white/[0.08] active:scale-95
            ${alwaysVisible ? '' : 'opacity-0 group-hover:opacity-100'}`
         }
@@ -297,7 +297,7 @@ const ContextMenuPanel = forwardRef<
         transformOrigin: `${originX} 0%`,
         zIndex: 9999,
       }}
-      className="min-w-[200px] glass-popover rounded-mac-lg shadow-mac-xl py-1.5 noise-texture"
+      className="min-w-[200px] glass-popover rounded-radius-lg shadow-mac-xl py-1.5"
     >
       {items.map((item, i) => (
         <div key={item.label}>
@@ -315,23 +315,23 @@ const ContextMenuPanel = forwardRef<
             aria-disabled={item.disabled}
             className={`
               w-full flex items-center h-8 px-2.5 gap-2.5 text-[13px] text-left
-              rounded-mac-sm mx-0.5
+              rounded-radius-sm mx-0.5
               transition-all duration-100 ease-out
               ${item.disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-default'}
               ${
                 !item.disabled && item.danger
-                  ? 'text-mac-red hover:bg-mac-red/10'
+                  ? 'text-red-500 hover:bg-red-500/10'
                   : !item.disabled
                     ? 'text-white/80 hover:text-white hover:bg-white/[0.06]'
                     : 'text-white/40'
               }
-              ${focusedIndex === i ? (item.danger ? 'bg-mac-red/10 text-mac-red' : 'bg-white/[0.06] text-white') : ''}
+              ${focusedIndex === i ? (item.danger ? 'bg-red-500/10 text-red-500' : 'bg-white/[0.06] text-white') : ''}
             `}
           >
             {/* Icon slot — fixed width for alignment */}
             <span className="flex-shrink-0 w-5 h-5 flex items-center justify-center">
               {item.icon ? (
-                <span className="[&>svg]:w-4 [&>svg]:h-4 [&>svg]:text-mac-tertiary">
+                <span className="[&>svg]:w-4 [&>svg]:h-4 [&>svg]:text-label-dark-tertiary">
                   {item.icon}
                 </span>
               ) : null}
@@ -339,7 +339,7 @@ const ContextMenuPanel = forwardRef<
             <span className="truncate flex-1">{item.label}</span>
           </button>
           {item.separatorAfter && (
-            <div className="h-px bg-mac-separator my-1 mx-3" />
+            <div className="h-px bg-white/[0.06] my-1 mx-3" />
           )}
         </div>
       ))}

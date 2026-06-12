@@ -84,10 +84,10 @@ export const MiniPlayer = memo(function MiniPlayer() {
   return (
     <div className="fixed inset-0 glass-content z-50 flex flex-col">
       {/* Header — back button */}
-      <div className="px-mac-xl pt-14 pb-2 flex items-center justify-between">
+      <div className="px-6 pt-14 pb-2 flex items-center justify-between">
         <button
           onClick={() => setFullPlayerOpen(false)}
-          className="flex items-center gap-1 text-white/40 hover:text-white/70 transition-colors duration-mac"
+          className="flex items-center gap-1 text-white/40 hover:text-white/70 transition-colors duration-150"
           aria-label="Back to player"
         >
           <ChevronDown className="w-5 h-5" />
@@ -95,8 +95,8 @@ export const MiniPlayer = memo(function MiniPlayer() {
       </div>
 
       {/* Track info */}
-      <div className="flex-1 flex flex-col items-center justify-center px-mac-2xl">
-        <div className="w-52 h-52 rounded-mac-2xl bg-white/10 overflow-hidden shadow-2xl mb-8 ring-1 ring-white/[0.06]">
+      <div className="flex-1 flex flex-col items-center justify-center px-8">
+        <div className="w-52 h-52 rounded-radius-xl bg-white/10 overflow-hidden shadow-2xl mb-8 ring-1 ring-white/[0.06]">
           {currentTrack.thumbnail ? (
             <img src={currentTrack.thumbnail} alt="" className="w-full h-full object-cover" />
           ) : (
@@ -108,12 +108,12 @@ export const MiniPlayer = memo(function MiniPlayer() {
 
         <div className="text-center mb-6">
           <div className="text-xl font-bold text-white truncate max-w-xs">{currentTrack.title}</div>
-          <div className="text-sm text-mac-tertiary mt-1 truncate max-w-xs">{currentTrack.artist}</div>
+          <div className="text-sm text-label-dark-tertiary mt-1 truncate max-w-xs">{currentTrack.artist}</div>
         </div>
       </div>
 
       {/* Controls */}
-      <div className="px-mac-2xl pb-12">
+      <div className="px-8 pb-12">
         {/* Progress bar */}
         <div className="flex items-center gap-3 mb-5">
           <span className="text-xs text-white/40 w-10 text-right tabular-nums font-mono">{formatTime(progress)}</span>
@@ -126,13 +126,13 @@ export const MiniPlayer = memo(function MiniPlayer() {
           >
             <div className="w-full h-1.5 bg-white/10 rounded-full relative overflow-visible group-hover/pbar:h-2 transition-all duration-150">
               <div
-                className="h-full bg-mac-blue rounded-full relative"
+                className="h-full bg-accent rounded-full relative"
                 style={{ width: `${progressPercent}%` }}
               >
-                <div className="absolute inset-0 rounded-full bg-mac-blue/30 blur-sm" />
+                <div className="absolute inset-0 rounded-full bg-accent/30 blur-sm" />
               </div>
               <div
-                className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 bg-white rounded-full shadow-mac-glow opacity-0 group-hover/pbar:opacity-100 transition-opacity duration-200 pointer-events-none"
+                className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 bg-white rounded-full shadow-lg opacity-0 group-hover/pbar:opacity-100 transition-opacity duration-200 pointer-events-none"
                 style={{ left: `${progressPercent}%` }}
               />
             </div>
@@ -144,7 +144,7 @@ export const MiniPlayer = memo(function MiniPlayer() {
         <div className="flex items-center justify-center gap-4">
           <button
             onClick={previousTrack}
-            className="w-12 h-12 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition-all duration-mac active:scale-95"
+            className="w-12 h-12 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition-all duration-150 active:scale-95"
             aria-label="Previous track"
           >
             <SkipBack className="w-5 h-5 fill-current" />
@@ -152,7 +152,7 @@ export const MiniPlayer = memo(function MiniPlayer() {
 
           <button
             onClick={togglePlay}
-            className="w-14 h-14 rounded-full bg-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all duration-mac shadow-lg shadow-white/10"
+            className="w-14 h-14 rounded-full bg-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all duration-150 shadow-lg shadow-white/10"
             aria-label={isPlaying ? "Pause" : "Play"}
           >
             {isPlaying ? (
@@ -164,7 +164,7 @@ export const MiniPlayer = memo(function MiniPlayer() {
 
           <button
             onClick={nextTrack}
-            className="w-12 h-12 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition-all duration-mac active:scale-95"
+            className="w-12 h-12 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition-all duration-150 active:scale-95"
             aria-label="Next track"
           >
             <SkipForward className="w-5 h-5 fill-current" />
@@ -174,7 +174,7 @@ export const MiniPlayer = memo(function MiniPlayer() {
         {/* Back to main view */}
         <button
           onClick={() => setFullPlayerOpen(false)}
-          className="w-full mt-5 py-2 text-white/35 hover:text-white text-sm transition-colors duration-mac"
+          className="w-full mt-5 py-2 text-white/35 hover:text-white text-sm transition-colors duration-150"
         >
           Back to Player
         </button>

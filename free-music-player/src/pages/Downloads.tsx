@@ -75,11 +75,11 @@ export function DownloadsPage() {
   return (
     <div className="h-full overflow-y-auto overscroll-contain relative z-10 pb-32">
       {/* ── Header ──────────────────────────────────────────────── */}
-      <div className="px-mac-xl pt-14 pb-6 drag-region">
-        <h1 className="text-mac-large-title text-white/90 tracking-tight mb-1 no-drag">
+      <div className="px-6 pt-14 pb-6 drag-region">
+        <h1 className="text-mac-hero text-white/90 tracking-tight mb-1 no-drag">
           Downloads
         </h1>
-        <p className="text-mac-footnote text-white/30 no-drag">
+        <p className="text-mac-subhead text-white/30 no-drag">
           Manage your offline music
         </p>
       </div>
@@ -96,14 +96,14 @@ export function DownloadsPage() {
           </p>
         </div>
       ) : (
-        <div className="px-mac-xl animate-fade-in space-y-mac-2xl">
+        <div className="px-6 animate-fade-in space-y-8">
           {/* ── Active downloads ─────────────────────────────── */}
           {activeDownloads.length > 0 && (
             <section>
-              <h2 className="text-mac-footnote font-semibold text-white/50 uppercase tracking-wider mb-3">
+              <h2 className="text-mac-caption font-semibold text-white/50 uppercase tracking-wider mb-3">
                 Downloading ({activeDownloads.length})
               </h2>
-              <div className="glass-card rounded-mac-lg p-1">
+              <div className="glass-content rounded-radius-lg p-1">
                 {activeDownloads.map((entry) => {
                   const track = trackMap.get(entry.trackId);
                   return (
@@ -122,10 +122,10 @@ export function DownloadsPage() {
           {/* ── Failed downloads ─────────────────────────────── */}
           {failedDownloads.length > 0 && (
             <section>
-              <h2 className="text-mac-footnote font-semibold text-white/50 uppercase tracking-wider mb-3">
+              <h2 className="text-mac-caption font-semibold text-white/50 uppercase tracking-wider mb-3">
                 Failed ({failedDownloads.length})
               </h2>
-              <div className="glass-card rounded-mac-lg p-1">
+              <div className="glass-content rounded-radius-lg p-1">
                 {failedDownloads.map((entry) => {
                   const track = trackMap.get(entry.trackId);
                   return (
@@ -147,10 +147,10 @@ export function DownloadsPage() {
           {/* ── Completed downloads ──────────────────────────── */}
           {completedDownloads.length > 0 && (
             <section>
-              <h2 className="text-mac-footnote font-semibold text-white/50 uppercase tracking-wider mb-3">
+              <h2 className="text-mac-caption font-semibold text-white/50 uppercase tracking-wider mb-3">
                 Downloaded ({completedDownloads.length})
               </h2>
-              <div className="glass-card rounded-mac-lg p-1">
+              <div className="glass-content rounded-radius-lg p-1">
                 {completedDownloads.map((entry) => {
                   const track = trackMap.get(entry.trackId);
                   // Build a fake Track for TrackRow
@@ -233,9 +233,9 @@ function ActiveDownloadRow({
   const pct = Math.round(entry.progress * 100);
 
   return (
-    <div className="flex items-center gap-3.5 px-3 py-3 rounded-mac hover:bg-white/[0.03] transition-colors">
+    <div className="flex items-center gap-3.5 px-3 py-3 rounded-radius-sm hover:bg-white/[0.03] transition-colors">
       {/* Thumbnail */}
-      <div className="w-11 h-11 rounded-mac-sm bg-white/10 flex-shrink-0 overflow-hidden">
+      <div className="w-11 h-11 rounded-radius-sm bg-white/10 flex-shrink-0 overflow-hidden">
         {(track?.thumbnail || entry.thumbnail) ? (
           <img
             src={track?.thumbnail || entry.thumbnail}
@@ -254,15 +254,15 @@ function ActiveDownloadRow({
         <div className="text-sm font-semibold text-white truncate leading-tight">
           {entry.title}
         </div>
-        <div className="text-xs text-mac-tertiary truncate mt-0.5">{entry.artist}</div>
-        {/* Progress bar — mac-blue with glow */}
+        <div className="text-xs text-label-dark-tertiary truncate mt-0.5">{entry.artist}</div>
+        {/* Progress bar — accent with glow */}
         <div className="mt-1.5 h-1.5 bg-white/[0.08] rounded-full overflow-hidden">
           <div
-            className="h-full bg-mac-blue rounded-full transition-all duration-300 shadow-[0_0_8px_rgba(10,132,255,0.3)]"
+            className="h-full bg-accent rounded-full transition-all duration-300 shadow-[0_0_8px_rgba(0,135,255,0.3)]"
             style={{ width: `${pct}%` }}
           />
         </div>
-        <span className="text-[10px] text-mac-quaternary tabular-nums font-mono mt-0.5 inline-block">{pct}%</span>
+        <span className="text-[10px] text-label-dark-quaternary tabular-nums font-mono mt-0.5 inline-block">{pct}%</span>
       </div>
 
       {/* Cancel button */}
@@ -271,7 +271,7 @@ function ActiveDownloadRow({
           e.stopPropagation();
           onCancel();
         }}
-        className="mac-button-ghost p-1.5 rounded-md text-mac-tertiary hover:text-mac-red transition-colors"
+        className="flex items-center gap-2 p-1.5 rounded-md text-label-dark-tertiary hover:text-red-500 hover:bg-white/[0.06] transition-all duration-150"
         type="button"
         title="Cancel download"
       >
@@ -299,9 +299,9 @@ function FailedDownloadRow({
   onDelete: () => void;
 }) {
   return (
-    <div className="flex items-center gap-3.5 px-3 py-3 rounded-mac hover:bg-white/[0.03] transition-colors">
+    <div className="flex items-center gap-3.5 px-3 py-3 rounded-radius-sm hover:bg-white/[0.03] transition-colors">
       {/* Thumbnail */}
-      <div className="w-11 h-11 rounded-mac-sm bg-white/10 flex-shrink-0 overflow-hidden">
+      <div className="w-11 h-11 rounded-radius-sm bg-white/10 flex-shrink-0 overflow-hidden">
         {(track?.thumbnail || entry.thumbnail) ? (
           <img
             src={track?.thumbnail || entry.thumbnail}
@@ -320,7 +320,7 @@ function FailedDownloadRow({
         <div className="text-sm font-semibold text-white truncate leading-tight">
           {entry.title}
         </div>
-        <div className="text-xs text-mac-red/70 truncate mt-0.5">
+        <div className="text-xs text-red-500/70 truncate mt-0.5">
           {entry.error ?? 'Download failed'}
         </div>
       </div>
@@ -332,7 +332,7 @@ function FailedDownloadRow({
             e.stopPropagation();
             onRetry();
           }}
-          className="mac-button-ghost p-1.5 rounded-md text-mac-tertiary hover:text-mac-blue transition-colors"
+          className="flex items-center gap-2 p-1.5 rounded-md text-label-dark-tertiary hover:text-accent hover:bg-white/[0.06] transition-all duration-150"
           type="button"
           title="Retry download"
         >
@@ -346,7 +346,7 @@ function FailedDownloadRow({
             e.stopPropagation();
             onDelete();
           }}
-          className="mac-button-ghost p-1.5 rounded-md text-mac-tertiary hover:text-mac-red transition-colors"
+          className="flex items-center gap-2 p-1.5 rounded-md text-label-dark-tertiary hover:text-red-500 hover:bg-white/[0.06] transition-all duration-150"
           type="button"
           title="Remove"
         >

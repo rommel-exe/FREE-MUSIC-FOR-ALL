@@ -1,0 +1,45 @@
+/* ============================================
+   Light Theme Overrides
+   Imported conditionally in App.tsx
+   ============================================ */
+
+.theme-light {
+  /* Background overrides */
+  --bg-sidebar: rgba(255, 255, 255, 0.93);
+  --bg-content: rgba(249, 249, 249, 0.95);
+  --bg-floating: rgba(255, 255, 255, 0.92);
+  --bg-popover: rgba(255, 255, 255, 0.96);
+  --bg-app: #FFFFFF;
+
+  /* Label colors */
+  --label-primary: #1C1C1E;
+  --label-secondary: #636366;
+  --label-tertiary: #AEAEB2;
+  --label-quaternary: #C7C7CC;
+
+  /* Accent */
+  --accent: #007AFF;
+  --accent-hover: #0066D6;
+  --accent-active: #0052AD;
+
+  /* Separator */
+  --separator: rgba(0, 0, 0, 0.1);
+  --separator-opaque: #C6C6C8;
+
+  /* Fill */
+  --fill-primary: rgba(120, 120, 128, 0.2);
+  --fill-secondary: rgba(120, 120, 128, 0.12);
+  --fill-tertiary: rgba(120, 120, 128, 0.08);
+
+  /* Overrides for root and body in light mode */
+  color: var(--label-primary);
+}
+
+.theme-light html,
+.theme-light #root {
+  background: #FFFFFF;
+}
+
+.theme-light body {
+  color: #1C1C1E;
+}

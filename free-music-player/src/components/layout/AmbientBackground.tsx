@@ -33,9 +33,9 @@ export function AmbientBackground() {
   }, [currentTrack?.id]);
 
   return (
-    <div className="fixed inset-0 pointer-events-none -z-50 overflow-hidden bg-[#0A0A0A]">
+    <div className="fixed inset-0 pointer-events-none -z-50 overflow-hidden bg-dark-primary dark:bg-dark-primary bg-light-primary">
       {/* ── Base dark layer ── */}
-      <div className="absolute inset-0 bg-[#0A0A0A]" />
+      <div className="absolute inset-0 bg-dark-primary dark:bg-dark-primary bg-light-primary" />
 
       {/* ── Simulated dominant color wash ── */}
       {currentTrack && (
@@ -85,7 +85,7 @@ export function AmbientBackground() {
         className="absolute inset-0"
         style={{
           background: `
-            radial-gradient(ellipse 110% 110% at 50% 50%, transparent 35%, rgba(10, 10, 10, 0.55) 65%, rgba(10, 10, 10, 0.92) 100%)
+            radial-gradient(ellipse 110% 110% at 50% 50%, transparent 35%, rgba(7, 7, 7, 0.55) 65%, rgba(7, 7, 7, 0.95) 100%)
           `,
         }}
       />

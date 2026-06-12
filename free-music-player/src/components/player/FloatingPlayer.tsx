@@ -1,4 +1,5 @@
 import { memo, useCallback, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 import { usePlayerStore } from '@/store/playerStore';
 import { useUIStore } from '@/store/uiStore';
 import { useLibraryStore } from '@/store/libraryStore';
@@ -59,8 +60,22 @@ function useSliderDrag(
 
 const Equalizer = memo(function Equalizer() {
   return (
-    <div className="playing-indicator text-mac-accent">
-      <span /><span /><span /><span />
+    <div className="flex items-end gap-[2px] h-3.5 text-accent">
+      <motion.span
+        className="w-[3px] rounded-full bg-current"
+        animate={{ height: ['30%', '100%', '50%', '80%', '30%'] }}
+        transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      <motion.span
+        className="w-[3px] rounded-full bg-current"
+        animate={{ height: ['60%', '30%', '100%', '40%', '60%'] }}
+        transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut', delay: 0.2 }}
+      />
+      <motion.span
+        className="w-[3px] rounded-full bg-current"
+        animate={{ height: ['80%', '50%', '30%', '100%', '80%'] }}
+        transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut', delay: 0.4 }}
+      />
     </div>
   );
 });
@@ -86,7 +101,7 @@ const VolumeSlider = memo(function VolumeSlider({
   return (
     <div
       ref={trackRef}
-      className="w-20 h-1.5 bg-white/15 rounded-full relative touch-none cursor-pointer group/vol"
+      className="w-16 h-1.5 bg-white/15 rounded-full relative touch-none cursor-pointer group/vol"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -97,9 +112,9 @@ const VolumeSlider = memo(function VolumeSlider({
       aria-valuenow={Math.round(percent)}
       tabIndex={0}
     >
-      {/* Fill — mac-blue */}
+      {/* Fill */}
       <div
-        className="h-full bg-mac-blue rounded-full relative transition-[width] duration-100"
+        className="h-full bg-accent rounded-full relative transition-[width] duration-100"
         style={{ width: `${percent}%` }}
       >
         {/* Thumb */}
@@ -133,10 +148,10 @@ const CtrlButton = memo(function CtrlButton({
       onClick={onClick}
       aria-label={label}
       className={`
-        relative w-9 h-9 rounded-full flex items-center justify-center
-        transition-all duration-mac ease-mac
+        relative w-8 h-8 rounded-full flex items-center justify-center
+        transition-all duration-apple ease-apple
         ${active
-          ? 'text-mac-accent'
+          ? 'text-accent'
           : 'text-white/60 hover:text-white'
         }
         ${accent && active ? 'bg-white/10' : ''}
@@ -146,7 +161,7 @@ const CtrlButton = memo(function CtrlButton({
     >
       {children}
       {active && (
-        <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-mac-accent shadow-[0_0_4px_rgba(10,132,255,0.4)]" />
+        <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent shadow-[0_0_4px_rgba(0,135,255,0.4)]" />
       )}
     </button>
   );
@@ -166,17 +181,17 @@ const PlayButton = memo(function PlayButton({
       onClick={onClick}
       aria-label={isPlaying ? 'Pause' : 'Play'}
       className="
-        w-12 h-12 rounded-full bg-white text-black
+        w-9 h-9 rounded-full bg-white text-black
         flex items-center justify-center
         hover:scale-105 active:scale-95
-        transition-all duration-mac ease-mac
+        transition-all duration-apple ease-apple
         shadow-lg shadow-white/10
       "
     >
       {isPlaying ? (
-        <Pause className="w-5 h-5 fill-current" />
+        <Pause className="w-4 h-4 fill-current" />
       ) : (
-        <Play className="w-5 h-5 fill-current ml-0.5" />
+        <Play className="w-4 h-4 fill-current ml-0.5" />
       )}
     </button>
   );
@@ -223,9 +238,9 @@ const DownloadBtn = memo(function DownloadBtn({ track }: { track: Track }) {
       className={isDownloading ? 'pointer-events-auto' : ''}
     >
       {isDownloading ? (
-        <Loader2 className="w-4 h-4 animate-spin text-mac-accent" />
+        <Loader2 className="w-4 h-4 animate-spin text-accent" />
       ) : isDownloaded ? (
-        <Check className="w-4 h-4 text-mac-green fill-current" />
+        <Check className="w-4 h-4 text-green-500 fill-current" />
       ) : (
         <Download className={`w-4 h-4 ${disabled ? 'opacity-30' : ''}`} />
       )}
@@ -272,31 +287,31 @@ export const FloatingPlayer = memo(function FloatingPlayer() {
 
   return (
     <div
-      className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[min(720px,calc(100vw-48px))]"
+      className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[min(640px,calc(100vw-48px))]"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* ── Main bar ── */}
       <div
         className="
-          glass-popover rounded-3xl
+          glass-floating
+          p-2
           flex flex-col
-          shadow-mac-xl
-          transition-all duration-300 ease-out
+          transition-all duration-apple ease-apple
           group
         "
       >
         {/* ── Controls row ── */}
-        <div className="flex items-center gap-0 px-2 pt-2 pb-1">
+        <div className="flex items-center gap-0">
           {/* ── Left: Art + Info ── */}
-          <div className="flex items-center gap-3 min-w-0 flex-1 pl-1">
-            {/* Album Art — square with rounded corners */}
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            {/* Album Art — 56×56 */}
             <button
               onClick={() => setFullPlayerOpen(true)}
               className="
-                relative w-14 h-14 rounded-xl overflow-hidden flex-shrink-0
+                relative w-14 h-14 rounded-radius-xl overflow-hidden flex-shrink-0
                 group/art
-                transition-all duration-mac ease-mac
+                transition-all duration-apple ease-apple
                 hover:scale-105 hover:shadow-lg hover:shadow-black/30
                 active:scale-95
                 ring-1 ring-white/10
@@ -319,7 +334,7 @@ export const FloatingPlayer = memo(function FloatingPlayer() {
                 absolute inset-0 bg-black/50 backdrop-blur-sm
                 flex items-center justify-center
                 opacity-0 group-hover/art:opacity-100
-                transition-opacity duration-mac
+                transition-opacity duration-apple
               ">
                 <Maximize2 className="w-4 h-4 text-white" />
               </div>
@@ -333,7 +348,7 @@ export const FloatingPlayer = memo(function FloatingPlayer() {
                 </span>
                 {isPlaying && <Equalizer />}
               </div>
-              <span className="text-mac-caption text-mac-tertiary truncate">
+              <span className="text-mac-body text-label-dark-tertiary truncate">
                 {currentTrack.artist}
               </span>
             </div>
@@ -375,7 +390,7 @@ export const FloatingPlayer = memo(function FloatingPlayer() {
           {/* ── Right: Secondary Controls ── */}
           <div className={`
             flex items-center gap-0.5
-            transition-all duration-250 ease-mac
+            transition-all duration-250 ease-apple
             overflow-hidden
             ${isHovered ? 'opacity-100 max-w-[260px]' : 'opacity-0 max-w-0 pointer-events-none'}
           `}>
@@ -395,7 +410,7 @@ export const FloatingPlayer = memo(function FloatingPlayer() {
             {/* Download */}
             <DownloadBtn track={currentTrack} />
 
-            {/* Volume */}
+            {/* Volume — inline, 64px wide */}
             <div className="flex items-center gap-1.5 group/vol-wrap">
               <CtrlButton
                 onClick={toggleMute}
@@ -410,8 +425,8 @@ export const FloatingPlayer = memo(function FloatingPlayer() {
                 )}
               </CtrlButton>
               <div className={`
-                transition-all duration-250 ease-mac
-                ${isHovered ? 'w-20 opacity-100' : 'w-0 opacity-0'}
+                transition-all duration-250 ease-apple
+                ${isHovered ? 'w-16 opacity-100' : 'w-0 opacity-0'}
               `}>
                 <VolumeSlider volume={isMuted ? 0 : volume} onChange={setVolume} />
               </div>
@@ -440,8 +455,8 @@ export const FloatingPlayer = memo(function FloatingPlayer() {
           </div>
         </div>
 
-        {/* ── Progress bar at bottom of bar ── */}
-        <div className="px-3 pb-2.5">
+        {/* ── Progress bar — 3px height, accent fill ── */}
+        <div className="px-3 pb-1.5 pt-1">
           <ProgressBarInline progress={progress} duration={duration} onSeek={seek} />
         </div>
       </div>
@@ -449,7 +464,7 @@ export const FloatingPlayer = memo(function FloatingPlayer() {
   );
 });
 
-/* ─── Inline Progress Bar (full-width, above the bar) ─── */
+/* ─── Inline Progress Bar (full-width, 3px height) ─── */
 
 const ProgressBarInline = memo(function ProgressBarInline({
   progress,
@@ -501,20 +516,20 @@ const ProgressBarInline = memo(function ProgressBarInline({
         aria-valuenow={Math.round(percent)}
         tabIndex={0}
       >
-        <div className="w-full h-1 bg-white/10 rounded-full relative overflow-visible group-hover/pbar:h-1.5 transition-all duration-150">
-          {/* Fill — mac-blue */}
+        <div className="w-full h-[3px] bg-white/10 rounded-full relative overflow-visible group-hover/pbar:h-1.5 transition-all duration-150">
+          {/* Fill — accent blue */}
           <div
-            className="h-full bg-mac-blue rounded-full relative transition-[width] duration-75"
+            className="h-full bg-accent rounded-full relative transition-[width] duration-75"
             style={{ width: `${percent}%` }}
           >
             {/* Glow */}
-            <div className="absolute inset-0 rounded-full bg-mac-blue/30 blur-sm" />
+            <div className="absolute inset-0 rounded-full bg-accent/30 blur-sm" />
           </div>
           {/* Thumb — blue circle */}
           <div
             className="
               absolute top-1/2 -translate-y-1/2 -translate-x-1/2
-              w-3 h-3 bg-white rounded-full shadow-mac-glow
+              w-3 h-3 bg-white rounded-full
               opacity-0 group-hover/pbar:opacity-100
               transition-opacity duration-200
               pointer-events-none

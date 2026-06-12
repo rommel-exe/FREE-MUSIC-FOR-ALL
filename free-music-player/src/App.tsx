@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { AnimatePresence, motion } from 'framer-motion';
-import { CompactNav } from '@/components/layout/CompactNav';
+import { TitleBar } from '@/components/layout/TitleBar';
+import { Sidebar } from '@/components/layout/Sidebar';
+import { Toolbar } from '@/components/layout/Toolbar';
 import { AmbientBackground } from '@/components/layout/AmbientBackground';
 import { FloatingPlayer } from '@/components/player/FloatingPlayer';
-
 import { QueuePanel } from '@/components/player/QueuePanel';
 import { LyricsPanel } from '@/components/player/LyricsPanel';
 import { MiniPlayer } from '@/components/player/MiniPlayer';
@@ -42,6 +43,7 @@ const pageTransition = {
 
 function App() {
   const currentPage = useUIStore((s) => s.currentPage);
+  const theme = useUIStore((s) => s.theme);
   const loadTracks = useLibraryStore((s) => s.loadTracks);
   const toggleFavorite = useLibraryStore((s) => s.toggleFavorite);
 
@@ -132,41 +134,39 @@ function App() {
   };
 
   return (
-    <div className="h-screen flex bg-transparent overflow-hidden relative">
-      {/* Background — deepest layer */}
+    <div className={`h-screen flex flex-col ${theme === 'light' ? 'theme-light' : ''}`}>
       <AmbientBackground />
 
-      {/* Dock Nav */}
-      <CompactNav />
+      <TitleBar />
 
-      {/* Main content */}
-      <main className="flex-1 overflow-hidden relative">
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={currentPage}
-            variants={pageVariants}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            transition={pageTransition}
-            className="h-full"
-          >
-            {pages[currentPage] || <HomePage />}
-          </motion.div>
-        </AnimatePresence>
-      </main>
+      <div className="flex-1 flex overflow-hidden">
+        <Sidebar />
 
-      {/* Panels — slide out from right */}
+        <div className="flex-1 flex flex-col">
+          <Toolbar />
+
+          <main className="flex-1 overflow-hidden relative">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={currentPage}
+                variants={pageVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={pageTransition}
+                className="h-full"
+              >
+                {pages[currentPage] || <HomePage />}
+              </motion.div>
+            </AnimatePresence>
+          </main>
+        </div>
+      </div>
+
+      <FloatingPlayer />
       <QueuePanel />
       <LyricsPanel />
-
-      {/* Floating player — always on top */}
-      <FloatingPlayer />
-
-      {/* Update banner — above floating player */}
       <UpdateBanner />
-
-      {/* Modals */}
       <ImportModal />
       <CreatePlaylistModal />
     </div>

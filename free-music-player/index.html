@@ -1,11 +1,21 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Free Music Player</title>
+    <style>
+      /* System font stack — SF Pro via system fonts on macOS, Inter fallback */
+      @font-face { font-family: 'SF Pro'; font-weight: 400; src: local('SF Pro Text'), local('SF-Pro-Text-Regular'); }
+      @font-face { font-family: 'SF Pro'; font-weight: 500; src: local('SF Pro Text Medium'), local('SF-Pro-Text-Medium'); }
+      @font-face { font-family: 'SF Pro'; font-weight: 600; src: local('SF Pro Text Semibold'), local('SF-Pro-Text-Semibold'); }
+      @font-face { font-family: 'SF Pro'; font-weight: 700; src: local('SF Pro Display Bold'), local('SF-Pro-Display-Bold'); }
+      @font-face { font-family: 'SF Pro Rounded'; font-weight: 500; src: local('SF Pro Rounded Medium'), local('SF-Pro-Rounded-Medium'); }
+      @font-face { font-family: 'SF Mono'; font-weight: 400; src: local('SF Mono'), local('SF-Mono-Regular'); }
+      @font-face { font-family: 'SF Mono'; font-weight: 600; src: local('SF Mono Semibold'), local('SF-Mono-Semibold'); }
+    </style>
   </head>
-  <body class="bg-surface-950 text-white">
+  <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
