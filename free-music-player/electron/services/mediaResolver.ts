@@ -28,7 +28,7 @@ import * as path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import type { MediaSource } from '../utils/types';
 import { getVerifiedTrack, setVerifiedTrack, getCachedStreamUrl, setCachedStreamUrl, getDownloadedFilePath } from '../utils/database';
-import { searchYouTubeMatch } from '../utils/searchMatching';
+import { trackIdentityEngine } from '../identity/trackIdentityEngine';
 
 const execFileAsync = promisify(execFile);
 
@@ -161,13 +161,15 @@ class MediaResolver {
 
     console.log(`[MediaResolver] Primary resolve failed for ${videoId}, attempting auto-recovery...`);
 
-    // 2) Auto-recovery: search for official audio track via unified engine
+    // 2) Auto-recovery: search for official audio track via TrackIdentityEngine
     if (metadata?.artist && metadata?.title) {
-      const recoveryVideoId = await searchYouTubeMatch(
-        metadata.artist,
-        metadata.title,
-        metadata.expectedDuration,
-      );
+      const result = await trackIdentityEngine.identify({
+        title: metadata.title,
+        artist: metadata.artist,
+        duration: metadata.expectedDuration ?? 0,
+      });
+      
+      const recoveryVideoId = result?.videoId ?? null;
       if (recoveryVideoId && recoveryVideoId !== videoId) {
         console.log(`[MediaResolver] Recovery: ${videoId} → ${recoveryVideoId}`);
         const recoveryResult = await this.tryResolve(recoveryVideoId, metadata);

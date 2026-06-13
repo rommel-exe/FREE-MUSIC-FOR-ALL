@@ -191,4 +191,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => { ipcRenderer.removeListener('update:progress', wrapper); };
     },
   },
+
+  identity: {
+    identify: (track: { title: string; artist: string; album?: string; duration: number; source?: string; youtubeId?: string; spotifyId?: string }) =>
+      invoke('identity:identify', track),
+    batchIdentify: (tracks: Array<{ title: string; artist: string; duration: number; album?: string }>) =>
+      invoke('identity:batchIdentify', tracks),
+    rematch: (track: { title: string; artist: string; duration?: number }) =>
+      invoke('identity:rematch', track),
+    invalidate: (fingerprint: string) =>
+      invoke('identity:invalidate', fingerprint),
+    getStats: () =>
+      invoke('identity:getStats'),
+    verify: (track: unknown, candidate: unknown) =>
+      invoke('identity:verify', track, candidate),
+    onBatchProgress: (callback: (data: { completed: number; total: number }) => void) => {
+      const wrapper = (_event: unknown, data: { completed: number; total: number }) => callback(data);
+      ipcRenderer.on('identity:batchProgress', wrapper);
+      return () => { ipcRenderer.removeListener('identity:batchProgress', wrapper); };
+    },
+  },
 });

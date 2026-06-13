@@ -150,6 +150,15 @@ interface ElectronAPI {
       total: number;
     }) => void) => () => void;
   };
+  identity?: {
+    identify: (track: { title: string; artist: string; album?: string; duration: number; source?: string; youtubeId?: string; spotifyId?: string }) => Promise<unknown>;
+    batchIdentify: (tracks: Array<{ title: string; artist: string; duration: number; album?: string }>, onProgress?: (data: { completed: number; total: number }) => void) => Promise<{ results: unknown[]; error?: string }>;
+    rematch: (track: { title: string; artist: string; duration?: number }) => Promise<unknown>;
+    invalidate: (fingerprint: string) => Promise<{ ok: boolean; error?: string }>;
+    getStats: () => Promise<unknown>;
+    verify: (track: unknown, candidate: unknown) => Promise<unknown>;
+    onBatchProgress: (fn: (data: { completed: number; total: number }) => void) => () => void;
+  };
   onGlobalShortcut?: (channel: string, callback: () => void) => (() => void) | void;
 }
 

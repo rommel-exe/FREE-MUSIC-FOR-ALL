@@ -23,6 +23,8 @@ import { registerStreamHandlers } from './ipc/stream';
 import { registerImportHandlers } from './ipc/import';
 import { registerAlignmentHandlers } from './ipc/alignment';
 import { registerDownloadHandlers } from './ipc/download';
+import { registerIdentityHandlers } from './ipc/identity';
+import { trackIdentityEngine } from './identity/trackIdentityEngine';
 import { mediaResolver } from './services/mediaResolver';
 
 // ─── Prevent multiple instances ─────────────────────────────────────────
@@ -538,6 +540,13 @@ app.whenReady().then(async () => {
   registerImportHandlers();
   registerAlignmentHandlers();
   registerDownloadHandlers();
+  registerIdentityHandlers();
+  
+  // Initialize track identity engine (non-blocking — don't await)
+  trackIdentityEngine.initialize().catch((err: any) => {
+    console.error('[Main] TrackIdentityEngine init failed:', err);
+  });
+
   registerWindowControls();
   registerUpdateHandlers();
 

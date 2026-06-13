@@ -216,4 +216,34 @@ export const ipc = {
     }) => void): (() => void) =>
       api?.update?.onUpdateProgress(callback) ?? (() => {}),
   },
+
+  identity: {
+    /** Identify a single track — returns a MatchResult */
+    identify: (track: { title: string; artist: string; album?: string; duration: number; source?: string; youtubeId?: string; spotifyId?: string }): Promise<any> =>
+      (api?.identity?.identify(track) as Promise<any> | undefined) ?? Promise.resolve({ error: 'No API' }),
+
+    /** Batch identify multiple tracks with progress */
+    batchIdentify: (tracks: Array<{ title: string; artist: string; duration: number; album?: string }>, onProgress?: (data: { completed: number; total: number }) => void): Promise<{ results: any[]; error?: string }> =>
+      (api?.identity?.batchIdentify(tracks) as Promise<any> | undefined) ?? Promise.resolve({ results: [] }),
+
+    /** Force re-match (ignore cache) */
+    rematch: (track: { title: string; artist: string; duration?: number }): Promise<any> =>
+      (api?.identity?.rematch(track) as Promise<any> | undefined) ?? Promise.resolve({ error: 'No API' }),
+
+    /** Invalidate a cached fingerprint */
+    invalidate: (fingerprint: string): Promise<{ ok: boolean; error?: string }> =>
+      (api?.identity?.invalidate(fingerprint) as Promise<any> | undefined) ?? Promise.resolve({ ok: false, error: 'No API' }),
+
+    /** Get engine stats */
+    getStats: (): Promise<any> =>
+      (api?.identity?.getStats() as Promise<any> | undefined) ?? Promise.resolve({ error: 'No API' }),
+
+    /** Verify a specific candidate */
+    verify: (track: any, candidate: any): Promise<any> =>
+      (api?.identity?.verify(track, candidate) as Promise<any> | undefined) ?? Promise.resolve({ error: 'No API' }),
+
+    /** Subscribe to batch progress events */
+    onBatchProgress: (fn: (data: { completed: number; total: number }) => void): (() => void) =>
+      api?.identity?.onBatchProgress?.(fn) ?? (() => {}),
+  },
 };

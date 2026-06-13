@@ -3,6 +3,7 @@ import * as db from '../utils/database';
 import type { Track } from '../utils/types';
 import { validate, IdSchema, TrackSchema } from '../utils/validate';
 import { resolveBatchYoutubeIds } from '../utils/searchMatching';
+import { trackIdentityEngine } from '../identity/trackIdentityEngine';
 
 function generateId(): string {
   try { return crypto.randomUUID(); } catch { return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`; }
@@ -86,11 +87,11 @@ export function registerLibraryHandlers(): void {
   });
 
   /**
-   * Pre-match ALL library tracks through the unified YouTube matching engine.
+   * Pre-match ALL library tracks through the TrackIdentityEngine.
    *
-   * Replaces the old resolveMissingYoutubeIds + rematchAllTracks with a
-   * SINGLE pass that runs every track through searchMatching.resolveBatchYoutubeIds().
-   * Updates DB records and clears stale caches for changed YouTube IDs.
+   * Uses the dedicated identity engine with persistence, caching, and
+   * multi-factor scoring. Updates DB records and clears stale caches
+   * for changed YouTube IDs.
    *
    * Called automatically on library load (fire-and-forget, background).
    */
@@ -106,35 +107,39 @@ export function registerLibraryHandlers(): void {
       artist: t.artist,
       duration: t.duration,
       thumbnail: t.thumbnail,
-      // No youtubeId — force resolveBatchYoutubeIds to search EVERY track
-      youtubeId: undefined as string | undefined,
     }));
 
-    console.log(`[Library] Pre-matching ${tracks.length} tracks through unified engine...`);
+    console.log(`[Library] Pre-matching ${tracks.length} tracks through TrackIdentityEngine...`);
 
-    const resolved = await resolveBatchYoutubeIds(tracks as any);
+    const results = await trackIdentityEngine.batchIdentify(
+      tracks.map(t => ({ title: t.title, artist: t.artist, duration: t.duration })),
+      (completed, total) => {
+        console.log(`[Library] Pre-matching ${completed}/${total}...`);
+      },
+    );
+
     let matched = 0;
     let unchanged = 0;
     let failed = 0;
 
-    for (const track of resolved) {
-      const trackId = (track as any).id as string | undefined;
-      const oldYoutubeId = (track as any).oldYoutubeId as string | undefined;
-      const newYoutubeId = track.youtubeId;
+    for (let i = 0; i < tracks.length; i++) {
+      const track = tracks[i];
+      const result = results[i];
+      const newYoutubeId = result?.videoId;
 
-      if (!newYoutubeId || !trackId) {
+      if (!newYoutubeId || (result?.confidence ?? 0) < 50) {
         failed++;
         continue;
       }
 
-      if (!oldYoutubeId || oldYoutubeId !== newYoutubeId) {
+      if (!track.oldYoutubeId || track.oldYoutubeId !== newYoutubeId) {
         // New or changed YouTube ID — update DB and clear stale caches
-        if (oldYoutubeId) {
-          db.removeVerifiedTrack(oldYoutubeId);
-          db.removeStreamCache(oldYoutubeId);
-          db.removeAlignedLyrics(oldYoutubeId);
+        if (track.oldYoutubeId) {
+          db.removeVerifiedTrack(track.oldYoutubeId);
+          db.removeStreamCache(track.oldYoutubeId);
+          db.removeAlignedLyrics(track.oldYoutubeId);
         }
-        db.updateTrack(trackId, { youtube_id: newYoutubeId, source: 'youtube' });
+        db.updateTrack(track.id, { youtube_id: newYoutubeId, source: 'youtube' });
         matched++;
       } else {
         unchanged++;

@@ -10,6 +10,7 @@ import {
   filterByExactDuration,
   computeMultiFactorScore,
 } from '../utils/searchMatching';
+import { trackIdentityEngine } from '../identity/trackIdentityEngine';
 
 const execFileAsync = promisify(execFile);
 
@@ -561,5 +562,38 @@ export function registerSearchHandlers(): void {
       result[id] = v;
     }
     return result;
+  });
+
+  /**
+   * Identify a track by searching YouTube Music through TrackIdentityEngine.
+   * Returns a MatchResult with videoId, confidence, and all scoring details.
+   * This is the preferred method for track identification.
+   */
+  ipcMain.handle('search:identify', async (_event, track: { title: string; artist: string; duration: number; album?: string }) => {
+    try {
+      if (!track?.title || !track?.artist || !track?.duration) {
+        return { error: 'Missing required fields: title, artist, duration' };
+      }
+      return await trackIdentityEngine.identify(track);
+    } catch (err: any) {
+      console.error('[search:identify] Error:', err.message);
+      return { error: err.message };
+    }
+  });
+
+  /**
+   * Batch identify multiple tracks through TrackIdentityEngine.
+   */
+  ipcMain.handle('search:batchIdentify', async (_event, tracks: Array<{ title: string; artist: string; duration: number }>) => {
+    try {
+      if (!Array.isArray(tracks)) {
+        return { error: 'Expected array of tracks' };
+      }
+      const results = await trackIdentityEngine.batchIdentify(tracks);
+      return { results };
+    } catch (err: any) {
+      console.error('[search:batchIdentify] Error:', err.message);
+      return { error: err.message };
+    }
   });
 }
