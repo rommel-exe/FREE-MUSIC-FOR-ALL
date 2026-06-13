@@ -44,12 +44,9 @@ export const ipc = {
       api?.library?.incrementPlayCount(id) ?? Promise.resolve(),
     addRecentlyPlayed: (id: string): Promise<void> =>
       api?.library?.addRecentlyPlayed(id) ?? Promise.resolve(),
-    resolveMissingYoutubeIds: (): Promise<{ resolved: number; total: number }> =>
-      (api?.library?.resolveMissingYoutubeIds() as Promise<{ resolved: number; total: number }> | undefined) ??
-      Promise.resolve({ resolved: 0, total: 0 }),
-    rematchAllTracks: (): Promise<{ rematched: number; total: number; unchanged: number }> =>
-      (api?.library?.rematchAllTracks() as Promise<{ rematched: number; total: number; unchanged: number }> | undefined) ??
-      Promise.resolve({ rematched: 0, total: 0, unchanged: 0 }),
+    prematchAll: (): Promise<{ matched: number; total: number; unchanged: number; failed: number }> =>
+      (api?.library?.prematchAll() as Promise<{ matched: number; total: number; unchanged: number; failed: number }> | undefined) ??
+      Promise.resolve({ matched: 0, total: 0, unchanged: 0, failed: 0 }),
   },
 
   playlist: {

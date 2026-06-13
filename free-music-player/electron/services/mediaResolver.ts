@@ -28,12 +28,7 @@ import * as path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import type { MediaSource } from '../utils/types';
 import { getVerifiedTrack, setVerifiedTrack, getCachedStreamUrl, setCachedStreamUrl, getDownloadedFilePath } from '../utils/database';
-import {
-  computeTrustScore,
-  computeMultiFactorScore,
-  getOfficialDuration,
-  filterByExactDuration,
-} from '../utils/searchMatching';
+import { searchYouTubeMatch } from '../utils/searchMatching';
 
 const execFileAsync = promisify(execFile);
 
@@ -166,9 +161,9 @@ class MediaResolver {
 
     console.log(`[MediaResolver] Primary resolve failed for ${videoId}, attempting auto-recovery...`);
 
-    // 2) Auto-recovery: search for official audio track, prefer matching duration
+    // 2) Auto-recovery: search for official audio track via unified engine
     if (metadata?.artist && metadata?.title) {
-      const recoveryVideoId = await this.searchOfficialSong(
+      const recoveryVideoId = await searchYouTubeMatch(
         metadata.artist,
         metadata.title,
         metadata.expectedDuration,
@@ -648,100 +643,6 @@ class MediaResolver {
     }
   }
 
-  /**
-   * Auto-recovery: search YouTube Music for the official audio track.
-   *
-   * Uses the shared multi-factor scoring pipeline to rank results by:
-   *   1. Duration closeness (exact match = 100+ points)
-   *   2. Trust score (Topic channels, official audio keywords, etc.)
-   *   3. Title/artist similarity to the query
-   *   4. Native YouTube Music position (tiebreaker)
-   *
-   * @param artist - Artist name from the track metadata.
-   * @param title  - Song title from the track metadata.
-   * @param expectedDuration - Official track duration in seconds.
-   * @returns      - A YouTube video ID, or null if no result found.
-   */
-  private async searchOfficialSong(
-    artist: string,
-    title: string,
-    expectedDuration?: number,
-  ): Promise<string | null> {
-    try {
-      const mod = await import('ytmusic-api');
-      const YTMusic = mod.default;
-      const yt = new YTMusic();
-      await yt.initialize();
-
-      const query = `${artist} ${title}`.trim();
-      const results = await yt.searchSongs(query);
-      if (!results || results.length === 0) return null;
-
-      // Step 1: Compute trust scores for ALL results
-      const scored: Array<{
-        result: any;
-        duration: number;
-        trustScore: number;
-      }> = results.map((r: any) => ({
-        result: r,
-        duration: r.duration ?? 0,
-        trustScore: computeTrustScore(
-          r.name || r.title || '',
-          r.artist?.name || '',
-          r.duration ?? 0,
-        ),
-      }));
-
-      // Step 2: Determine official duration from trust-weighted voting
-      const computedOfficial = getOfficialDuration(
-        scored.map(s => ({ duration: s.duration, score: s.trustScore })),
-      );
-
-      // Use computed official if available, else fall back to expectedDuration
-      const targetDuration = computedOfficial > 0 ? computedOfficial : (expectedDuration ?? 0);
-      if (targetDuration <= 0) return null;
-
-      // Step 3: DURATION FIRST — filter ALL results by exact duration
-      // Duration is the definitive signal. If the length doesn't match,
-      // it's not the right track — official or not.
-      const durationMatched = filterByExactDuration(scored, targetDuration);
-      if (durationMatched.length === 0) {
-        console.log(`[MediaResolver] Recovery: no exact-duration match for "${query}" (target=${targetDuration}s)`);
-        return null;
-      }
-
-      // Step 4: Score duration-matched results with multi-factor ranking
-      // (artist match, native position — NOT just trust score alone)
-      const queryStr = query;
-      const ranked = durationMatched.map((s, i) => ({
-        ...s,
-        rankScore: computeMultiFactorScore({
-          duration: s.duration,
-          query: queryStr,
-          artist: s.result.artist?.name || '',
-          trustScore: s.trustScore,
-          nativePosition: i,
-          officialDuration: targetDuration,
-        }),
-      }));
-      ranked.sort((a, b) => b.rankScore - a.rankScore);
-
-      // Step 5: Pick the best trust-passing result (≥ 15 eliminates remixes)
-      const best = ranked.find(s => s.trustScore >= 15);
-      if (!best) {
-        console.log(`[MediaResolver] Recovery: no trust-passing match for "${query}"`);
-        return null;
-      }
-
-      console.log(
-        `[MediaResolver] Recovery found exact-duration match for "${query}" (rankScore=${best.rankScore.toFixed(0)})`,
-      );
-      return best.result.videoId || best.result.id || null;
-    } catch (err) {
-      console.error('[MediaResolver] Recovery search failed:', err instanceof Error ? err.message : err);
-      return null;
-    }
-  }
 }
 
 // ─── Singleton ──────────────────────────────────────────────────────────

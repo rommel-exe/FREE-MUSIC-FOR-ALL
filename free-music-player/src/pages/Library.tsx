@@ -240,8 +240,8 @@ export function LibraryPage() {
     toggleSortOrder,
     sortOrder,
     getFilteredTracks,
-    resolving,
-    resolveMissingIds,
+    prematching,
+    prematchAll,
   } = useLibraryStore(
     useShallow((s) => ({
       tracks: s.tracks,
@@ -253,8 +253,8 @@ export function LibraryPage() {
       toggleSortOrder: s.toggleSortOrder,
       sortOrder: s.sortOrder,
       getFilteredTracks: s.getFilteredTracks,
-      resolving: s.resolving,
-      resolveMissingIds: s.resolveMissingIds,
+      prematching: s.prematching,
+      prematchAll: s.prematchAll,
     })),
   );
   const { playTracks, currentTrack, isPlaying } = usePlayerStore(
@@ -412,19 +412,19 @@ export function LibraryPage() {
             )}
           </button>
 
-          {/* ── Resolve missing YouTube IDs ───────────────────── */}
-          {!resolving && (
+          {/* ── Pre-match YouTube IDs ──────────────────────── */}
+          {!prematching && (
             <button
-              onClick={() => resolveMissingIds()}
+              onClick={() => prematchAll()}
               className="text-xs text-groove-400 hover:text-groove-200 transition-colors duration-150 px-2 py-1.5 rounded-radius-sm hover:bg-groove-700"
               type="button"
             >
-              Fix
+              Re-match
             </button>
           )}
-          {resolving && (
+          {prematching && (
             <span className="text-xs text-groove-400 animate-pulse px-2">
-              Fixing…
+              Pre-matching…
             </span>
           )}
         </div>

@@ -287,3 +287,198 @@ export function computeMultiFactorScore(params: {
 
   return score;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  UNIFIED YOUTUBE MATCHING ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Lazily-initialized ytmusic-api singleton shared by all callers.
+ */
+let _ytmusicClient: any = null;
+
+async function getYTMusic(): Promise<any> {
+  if (!_ytmusicClient) {
+    const mod = await import('ytmusic-api');
+    const YTMusic = mod.default;
+    _ytmusicClient = new YTMusic();
+    await _ytmusicClient.initialize();
+  }
+  return _ytmusicClient;
+}
+
+/**
+ * In-memory cache for single-track matches to avoid redundant API calls.
+ */
+const matchCache = new Map<
+  string,
+  { videoId: string; ts: number }
+>();
+const MATCH_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+/**
+ * Unified YouTube Music matching engine.
+ *
+ * Searches YouTube Music for the given artist + title, runs the full
+ * multi-factor scoring pipeline, and returns the best exact-duration
+ * match. Used by playlist import, play-time auto-recovery, and library
+ * pre-matching — replaces 3 separate copies of the same pipeline.
+ *
+ * @param artist           - Artist name.
+ * @param title            - Song title.
+ * @param expectedDuration - Expected duration in seconds (from source metadata).
+ * @returns The matching YouTube videoId, or null if no good match found.
+ */
+export async function searchYouTubeMatch(
+  artist: string,
+  title: string,
+  expectedDuration?: number,
+): Promise<string | null> {
+  const query = `${artist} ${title}`.trim();
+  if (!query) return null;
+
+  // ── Cache check ──
+  const cacheKey = query;
+  const cached = matchCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < MATCH_CACHE_TTL_MS) {
+    return cached.videoId;
+  }
+
+  try {
+    const yt = await getYTMusic();
+    const results = await yt.searchSongs(query);
+    if (!results || results.length === 0) return null;
+
+    // Step 1: Compute trust scores for ALL results
+    const scored: Array<{
+      result: any;
+      duration: number;
+      trustScore: number;
+    }> = results.map((r: any) => ({
+      result: r,
+      duration: r.duration ?? 0,
+      trustScore: computeTrustScore(
+        r.name || r.title || '',
+        r.artist?.name || '',
+        r.duration ?? 0,
+      ),
+    }));
+
+    // Step 2: Determine official duration via trust-weighted voting
+    const computedOfficial = getOfficialDuration(
+      scored.map(s => ({ duration: s.duration, score: s.trustScore })),
+    );
+
+    // Use computed official if available, else fall back to expectedDuration
+    const targetDuration =
+      computedOfficial > 0 ? computedOfficial : (expectedDuration ?? 0);
+    if (targetDuration <= 0) return null;
+
+    // Step 3: DURATION FIRST — filter ALL results by exact duration
+    const durationMatched = filterByExactDuration(scored, targetDuration);
+    if (durationMatched.length === 0) return null;
+
+    // Step 4: Score duration-matched results with multi-factor ranking
+    const ranked = durationMatched.map((s, i) => ({
+      ...s,
+      rankScore: computeMultiFactorScore({
+        duration: s.duration,
+        query,
+        artist: s.result.artist?.name || '',
+        trustScore: s.trustScore,
+        nativePosition: i,
+        officialDuration: targetDuration,
+      }),
+    }));
+    ranked.sort((a, b) => b.rankScore - a.rankScore);
+
+    // Step 5: Pick the best trust-passing result (≥ 15 eliminates remixes)
+    const best = ranked.find(s => s.trustScore >= 15);
+    if (!best) return null;
+
+    const videoId = best.result.videoId || best.result.id || null;
+
+    // Cache the result
+    if (videoId) {
+      matchCache.set(cacheKey, { videoId, ts: Date.now() });
+    }
+
+    return videoId;
+  } catch (err) {
+    console.error(`[searchMatching] searchYouTubeMatch failed for "${query}":`, err);
+    return null;
+  }
+}
+
+/**
+ * Batch-resolve YouTube IDs for an array of tracks using the unified engine.
+ *
+ * Processes tracks with limited concurrency (3) to avoid rate-limiting.
+ * Skips tracks that already have a youtubeId.
+ *
+ * @param tracks     - Array of tracks with title, artist, duration.
+ * @param onProgress - Optional progress callback (called after each track).
+ * @returns The same tracks enriched with youtubeId where a match was found.
+ */
+export async function resolveBatchYoutubeIds(
+  tracks: Array<{
+    title: string;
+    artist: string;
+    duration: number;
+    thumbnail?: string;
+    youtubeId?: string;
+  }>,
+  onProgress?: (message: string) => void,
+): Promise<
+  Array<{
+    title: string;
+    artist: string;
+    duration: number;
+    thumbnail: string;
+    youtubeId?: string;
+  }>
+> {
+  const CONCURRENCY = 3;
+  const results: Array<{
+    title: string;
+    artist: string;
+    duration: number;
+    thumbnail: string;
+    youtubeId?: string;
+  }> = [];
+  let completed = 0;
+  const total = tracks.length;
+
+  for (let i = 0; i < tracks.length; i += CONCURRENCY) {
+    const batch = tracks.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.allSettled(
+      batch.map(async (track) => {
+        if (track.youtubeId) return { ...track, thumbnail: track.thumbnail || '' };
+        const videoId = await searchYouTubeMatch(
+          track.artist,
+          track.title,
+          track.duration,
+        );
+        completed++;
+        if (onProgress) {
+          onProgress(`Matching track ${completed}/${total} to YouTube...`);
+        }
+        return {
+          ...track,
+          thumbnail: track.thumbnail || '',
+          youtubeId: videoId || undefined,
+        };
+      }),
+    );
+
+    for (const r of batchResults) {
+      if (r.status === 'fulfilled') {
+        results.push(r.value);
+      }
+    }
+  }
+
+  const matched = results.filter(t => t.youtubeId).length;
+  console.log(`[searchMatching] YouTube batch: ${matched}/${total} tracks resolved`);
+  return results;
+}
