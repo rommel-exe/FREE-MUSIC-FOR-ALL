@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ipc } from '@/utils/ipc';
 import { usePlayerStore } from '@/store/playerStore';
 import { useLibraryStore } from '@/store/libraryStore';
@@ -13,6 +13,7 @@ import {
   Music,
   Disc3,
   Plus,
+  Search,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { TrackRow } from '@/components/common/TrackRow';
@@ -36,6 +37,19 @@ function sourceLabel(source?: string): string {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Debounce hook                                                      */
+/* ------------------------------------------------------------------ */
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  return debouncedValue;
+}
+
+/* ------------------------------------------------------------------ */
 /*  PlaylistPage                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -49,6 +63,22 @@ export function PlaylistPage() {
   const downloadEntries = useDownloadStore((s) => s.entries);
   const downloadTrack = useDownloadStore((s) => s.downloadTrack);
   const cancelDownload = useDownloadStore((s) => s.cancelDownload);
+
+  /* ── Local search state ────────────────────────────────────── */
+  const [playlistSearchQuery, setPlaylistSearchQuery] = useState('');
+  const debouncedPlaylistQuery = useDebounce(playlistSearchQuery, 200);
+
+  /* ── Filtered tracks ──────────────────────────────────────── */
+  const filteredTracks = useMemo(() => {
+    const q = debouncedPlaylistQuery.trim().toLowerCase();
+    if (!q) return playlistTracks;
+    return playlistTracks.filter(
+      (t) =>
+        t.title?.toLowerCase().includes(q) ||
+        t.artist?.toLowerCase().includes(q) ||
+        t.album?.toLowerCase().includes(q),
+    );
+  }, [playlistTracks, debouncedPlaylistQuery]);
 
   /* ── Sidebar selection via uiStore ─────────────────────────── */
   const selectedPlaylistId = useUIStore((s) => s.selectedPlaylistId);
@@ -261,7 +291,7 @@ export function PlaylistPage() {
               transition={{ duration: 0.25, delay: 0.15 }}
             >
               <button
-                onClick={() => playTracks(playlistTracks)}
+                onClick={() => playTracks(filteredTracks)}
                 className="flex items-center gap-2 rounded-full bg-emerald text-white text-mac-body px-6 py-2 hover:bg-emerald-hover active:bg-emerald-active transition-all duration-150 active:scale-[0.98] shadow-sm"
                 type="button"
               >
@@ -270,7 +300,7 @@ export function PlaylistPage() {
               </button>
               <button
                 onClick={() => {
-                  const shuffled = [...playlistTracks].sort(() => Math.random() - 0.5);
+                  const shuffled = [...filteredTracks].sort(() => Math.random() - 0.5);
                   playTracks(shuffled);
                 }}
                 className="flex items-center gap-2 rounded-full bg-groove-600 hover:bg-groove-500 text-groove-200 text-mac-body px-5 py-2 transition-all duration-150 active:scale-[0.98]"
@@ -279,6 +309,27 @@ export function PlaylistPage() {
                 <Shuffle className="w-4 h-4" />
                 Shuffle
               </button>
+            </motion.div>
+          )}
+
+          {/* ── Search within playlist ──────────────────────── */}
+          {playlistTracks.length > 0 && (
+            <motion.div
+              className="px-6 pb-3"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2, delay: 0.18 }}
+            >
+              <div className="relative max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-groove-400 pointer-events-none" />
+                <input
+                  type="text"
+                  value={playlistSearchQuery}
+                  onChange={(e) => setPlaylistSearchQuery(e.target.value)}
+                  placeholder="Search in this playlist..."
+                  className="w-full pl-9 pr-4 py-2 rounded-radius-sm bg-groove-700/60 text-groove-100 placeholder-groove-400 text-sm outline-none border border-groove-600/40 focus:border-emerald/50 focus:shadow-[0_0_0_3px_rgba(16,185,129,0.15)] transition-all duration-150"
+                />
+              </div>
             </motion.div>
           )}
 
@@ -293,9 +344,19 @@ export function PlaylistPage() {
                 Search for music and add tracks to build your collection
               </p>
             </div>
+          ) : filteredTracks.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center animate-fade-in">
+              <div className="w-16 h-16 rounded-full bg-groove-700 flex items-center justify-center mb-4 ring-1 ring-groove-600">
+                <Search className="w-7 h-7 text-groove-400" />
+              </div>
+              <p className="text-groove-200 font-medium text-mac-body">No matching tracks</p>
+              <p className="text-sm text-groove-400 mt-1.5 max-w-xs leading-relaxed">
+                No tracks in this playlist match &quot;{playlistSearchQuery}&quot;
+              </p>
+            </div>
           ) : (
             <div className="px-4 pb-8">
-              {playlistTracks.map((track, i) => {
+              {filteredTracks.map((track, i) => {
                 const dlEntry = downloadEntries.get(track.id);
                 const isTrackDownloaded = dlEntry?.status === 'completed' || Boolean(track.path && track.source === 'local');
                 const isTrackDownloading = dlEntry?.status === 'downloading';
@@ -307,7 +368,7 @@ export function PlaylistPage() {
                     isActive={currentTrack?.id === track.id}
                     isPlaying={currentTrack?.id === track.id && isPlaying}
                     canReorder={canReorder}
-                    onPlay={() => playTracks(playlistTracks, i)}
+                    onPlay={() => playTracks(filteredTracks, i)}
                     onRemove={handleRemoveTrack}
                     onDownload={() => {
                       if (isTrackDownloading) {
