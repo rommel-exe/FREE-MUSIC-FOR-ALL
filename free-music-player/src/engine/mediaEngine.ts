@@ -619,7 +619,16 @@ export class MediaEngine {
 
   private async resolveAndPlay(track: Track, gen: number): Promise<void> {
     const videoId = track.youtubeId;
-    if (!videoId) return;
+    if (!videoId) {
+      console.warn('[MediaEngine] Cannot play track without youtubeId:', track.title, track.artist);
+      // Clean up the loading/playing state set by playTrack() / playTracks() —
+      // otherwise the play button gets stuck in "loading" forever.
+      this._isLoading = false;
+      this._isPlaying = false;
+      this.currentVideoId = null;
+      this.emit();
+      return;
+    }
 
     // If same track is already loaded and playing, just restart it (prevents double-play)
     if (this.audio.loadedVideoId === videoId && this._isPlaying && this.audio.active.src) {
