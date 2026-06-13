@@ -16,6 +16,7 @@ import { promisify } from 'node:util';
 import { BrowserWindow } from 'electron';
 import {
   computeTrustScore,
+  computeMultiFactorScore,
   getOfficialDuration,
   filterByExactDuration,
 } from '../utils/searchMatching';
@@ -88,13 +89,25 @@ async function searchExactYouTubeMatch(
     const durationMatched = filterByExactDuration(scored, targetDuration);
     if (durationMatched.length === 0) return null;
 
-    // Step 4: Among exact-duration matches, pick the one with highest trust
-    // (Topic channel, Official Audio naturally outrank remixes/covers)
-    durationMatched.sort((a, b) => b.trustScore - a.trustScore);
-    const best = durationMatched[0];
+    // Step 4: Score duration-matched results with multi-factor ranking
+    // (artist match, native position, view count — NOT just trust score)
+    const queryStr = query;
+    const ranked = durationMatched.map((s, i) => ({
+      ...s,
+      rankScore: computeMultiFactorScore({
+        duration: s.duration,
+        query: queryStr,
+        artist: s.result.artist?.name || '',
+        trustScore: s.trustScore,
+        nativePosition: i,
+        officialDuration: targetDuration,
+      }),
+    }));
+    ranked.sort((a, b) => b.rankScore - a.rankScore);
 
-    // Step 5: Only return if trust score is sufficient (≥ 15)
-    if (best.trustScore < 15) return null;
+    // Step 5: Filter to trust-passing only (≥ 15 eliminates remixes/covers)
+    const best = ranked.find(s => s.trustScore >= 15);
+    if (!best) return null;
 
     return best.result.videoId || best.result.id || null;
   } catch (err) {

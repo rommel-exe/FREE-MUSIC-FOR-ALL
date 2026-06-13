@@ -30,6 +30,7 @@ import type { MediaSource } from '../utils/types';
 import { getVerifiedTrack, setVerifiedTrack, getCachedStreamUrl, setCachedStreamUrl, getDownloadedFilePath } from '../utils/database';
 import {
   computeTrustScore,
+  computeMultiFactorScore,
   getOfficialDuration,
   filterByExactDuration,
 } from '../utils/searchMatching';
@@ -709,21 +710,31 @@ class MediaResolver {
         return null;
       }
 
-      // Step 4: Among exact-duration matches, pick the one with highest trust
-      // (Topic channel, Official Audio, etc. — naturally outranks remixes)
-      durationMatched.sort((a, b) => b.trustScore - a.trustScore);
-      const best = durationMatched[0];
+      // Step 4: Score duration-matched results with multi-factor ranking
+      // (artist match, native position — NOT just trust score alone)
+      const queryStr = query;
+      const ranked = durationMatched.map((s, i) => ({
+        ...s,
+        rankScore: computeMultiFactorScore({
+          duration: s.duration,
+          query: queryStr,
+          artist: s.result.artist?.name || '',
+          trustScore: s.trustScore,
+          nativePosition: i,
+          officialDuration: targetDuration,
+        }),
+      }));
+      ranked.sort((a, b) => b.rankScore - a.rankScore);
 
-      // Step 5: Only return if trust score is sufficient (≥ 15)
-      // This filters out remixes, covers, live versions even if they happen
-      // to have the exact same duration.
-      if (best.trustScore < 15) {
-        console.log(`[MediaResolver] Recovery: best match for "${query}" failed trust check (score=${best.trustScore})`);
+      // Step 5: Pick the best trust-passing result (≥ 15 eliminates remixes)
+      const best = ranked.find(s => s.trustScore >= 15);
+      if (!best) {
+        console.log(`[MediaResolver] Recovery: no trust-passing match for "${query}"`);
         return null;
       }
 
       console.log(
-        `[MediaResolver] Recovery found exact-duration match for "${query}" (trust=${best.trustScore})`,
+        `[MediaResolver] Recovery found exact-duration match for "${query}" (rankScore=${best.rankScore.toFixed(0)})`,
       );
       return best.result.videoId || best.result.id || null;
     } catch (err) {
