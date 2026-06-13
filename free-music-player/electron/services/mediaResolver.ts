@@ -30,10 +30,8 @@ import type { MediaSource } from '../utils/types';
 import { getVerifiedTrack, setVerifiedTrack, getCachedStreamUrl, setCachedStreamUrl, getDownloadedFilePath } from '../utils/database';
 import {
   computeTrustScore,
-  computeDurationClosenessScore,
   getOfficialDuration,
   filterByExactDuration,
-  computeMultiFactorScore,
 } from '../utils/searchMatching';
 
 const execFileAsync = promisify(execFile);
@@ -679,70 +677,55 @@ class MediaResolver {
       if (!results || results.length === 0) return null;
 
       // Step 1: Compute trust scores for ALL results
-      const scored = results.map((r: any, i: number) => ({
-        r,
+      const scored: Array<{
+        result: any;
+        duration: number;
+        trustScore: number;
+      }> = results.map((r: any) => ({
+        result: r,
+        duration: r.duration ?? 0,
         trustScore: computeTrustScore(
           r.name || r.title || '',
           r.artist?.name || '',
           r.duration ?? 0,
         ),
-        rankScore: 0,
       }));
 
       // Step 2: Determine official duration from trust-weighted voting
       const computedOfficial = getOfficialDuration(
-        scored.map(s => ({ duration: s.r.duration ?? 0, score: s.trustScore })),
+        scored.map(s => ({ duration: s.duration, score: s.trustScore })),
       );
 
       // Use computed official if available, else fall back to expectedDuration
       const targetDuration = computedOfficial > 0 ? computedOfficial : (expectedDuration ?? 0);
       if (targetDuration <= 0) return null;
 
-      // Step 3: Score ALL results using the full multi-factor score
-      const queryStr = query;
-      for (let i = 0; i < scored.length; i++) {
-        scored[i].rankScore = computeMultiFactorScore({
-          duration: scored[i].r.duration ?? 0,
-          query: queryStr,
-          artist: scored[i].r.artist?.name || '',
-          trustScore: scored[i].trustScore,
-          nativePosition: i,
-          officialDuration: targetDuration,
-        });
+      // Step 3: DURATION FIRST — filter ALL results by exact duration
+      // Duration is the definitive signal. If the length doesn't match,
+      // it's not the right track — official or not.
+      const durationMatched = filterByExactDuration(scored, targetDuration);
+      if (durationMatched.length === 0) {
+        console.log(`[MediaResolver] Recovery: no exact-duration match for "${query}" (target=${targetDuration}s)`);
+        return null;
       }
 
-      // Step 4: Sort by multi-factor score descending
-      // Exact-duration matches score 100+ from factor 1 + tiebreakers
-      // Non-matches score 0 on factor 1 → always rank below
-      scored.sort((a, b) => b.rankScore - a.rankScore);
+      // Step 4: Among exact-duration matches, pick the one with highest trust
+      // (Topic channel, Official Audio, etc. — naturally outranks remixes)
+      durationMatched.sort((a, b) => b.trustScore - a.trustScore);
+      const best = durationMatched[0];
 
-      // Step 5: Filter to trust-passing results only
-      const trustFiltered = scored
-        .filter(s => s.trustScore >= 15)
-        .map(s => s.r);
-
-      // Step 6: Filter to exact duration matches only
-      const durationMatched = filterByExactDuration(trustFiltered, targetDuration);
-
-      if (durationMatched.length > 0) {
-        console.log(
-          `[MediaResolver] Recovery found ${durationMatched.length} exact-duration match(es) for "${query}"`,
-        );
-        return durationMatched[0].videoId || durationMatched[0].id || null;
+      // Step 5: Only return if trust score is sufficient (≥ 15)
+      // This filters out remixes, covers, live versions even if they happen
+      // to have the exact same duration.
+      if (best.trustScore < 15) {
+        console.log(`[MediaResolver] Recovery: best match for "${query}" failed trust check (score=${best.trustScore})`);
+        return null;
       }
 
-      // Last resort: if no exact-duration match, use best multi-factor result
-      // (might still be wrong length, but better than nothing)
-      const alternative = filterByExactDuration(
-        scored.map(s => s.r),
-        targetDuration,
+      console.log(
+        `[MediaResolver] Recovery found exact-duration match for "${query}" (trust=${best.trustScore})`,
       );
-      if (alternative.length > 0) {
-        return alternative[0].videoId || alternative[0].id || null;
-      }
-
-      console.log(`[MediaResolver] Recovery found no matches for "${query}"`);
-      return null;
+      return best.result.videoId || best.result.id || null;
     } catch (err) {
       console.error('[MediaResolver] Recovery search failed:', err instanceof Error ? err.message : err);
       return null;

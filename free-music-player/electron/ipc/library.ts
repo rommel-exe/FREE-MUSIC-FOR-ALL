@@ -117,4 +117,59 @@ export function registerLibraryHandlers(): void {
 
     return { resolved: count, total: unresolved.length };
   });
+
+  /**
+   * Re-match ALL tracks (even ones with existing youtube_id) through the
+   * improved duration-first matching engine. Clears stale caches for any
+   * track whose YouTube ID changes.
+   *
+   * One-time migration: runs in background on first launch after v1.3.0.
+   */
+  ipcMain.handle('library:rematchAllTracks', async () => {
+    const allTracks = db.getAllTracks();
+    const matchable = allTracks.filter(t => t.artist && t.title && t.duration > 0);
+    if (matchable.length === 0) return { rematched: 0, total: 0, unchanged: 0 };
+
+    // Preserve old youtube_id so we can clear stale caches after re-match.
+    // Set youtubeId to undefined to force resolveYoutubeIds to re-search.
+    const tracks = matchable.map(t => ({
+      id: t.id,
+      oldYoutubeId: t.youtube_id,
+      title: t.title,
+      artist: t.artist,
+      duration: t.duration,
+      thumbnail: t.thumbnail,
+      youtubeId: undefined as string | undefined,
+    }));
+
+    console.log(`[Library] Re-matching ${tracks.length} tracks through v1.3 matching engine...`);
+
+    const resolved = await resolveYoutubeIds(tracks as any);
+    let rematched = 0;
+    let unchanged = 0;
+
+    for (const track of resolved) {
+      const trackId = (track as any).id;
+      const oldYoutubeId = (track as any).oldYoutubeId as string | undefined;
+      const newYoutubeId = track.youtubeId;
+
+      if (!newYoutubeId || !trackId) {
+        unchanged++;
+        continue;
+      }
+
+      if (oldYoutubeId && oldYoutubeId !== newYoutubeId) {
+        // ID changed — clear stale caches for the old video
+        db.removeVerifiedTrack(oldYoutubeId);
+        db.removeStreamCache(oldYoutubeId);
+        db.removeAlignedLyrics(oldYoutubeId);
+      }
+
+      db.updateTrack(trackId, { youtube_id: newYoutubeId, source: 'youtube' });
+      rematched++;
+    }
+
+    console.log(`[Library] Re-match complete: ${rematched} updated, ${unchanged} unchanged`);
+    return { rematched, total: matchable.length, unchanged };
+  });
 }

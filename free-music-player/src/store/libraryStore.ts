@@ -13,6 +13,7 @@ interface LibraryState {
   loading: boolean;
   error: string | null;
   resolving: boolean; // tracks missing youtube_id being resolved
+  rematching: boolean; // tracks being re-matched through v1.3 engine
 
   loadTracks: () => Promise<void>;
   loadFavorites: () => Promise<void>;
@@ -26,6 +27,7 @@ interface LibraryState {
   toggleSortOrder: () => void;
   getFilteredTracks: () => Track[];
   resolveMissingIds: () => Promise<void>;
+  rematchAll: () => Promise<void>;
 
   /**
    * Import a YouTube or Spotify playlist and create a new playlist in the
@@ -57,6 +59,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   loading: false,
   error: null,
   resolving: false,
+  rematching: false,
 
   loadTracks: async () => {
     set({ loading: true, error: null });
@@ -69,6 +72,15 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const unresolved = tracks.filter(t => !t.youtubeId);
       if (unresolved.length > 0) {
         get().resolveMissingIds();
+      }
+
+      // v1.3.0 migration: re-match ALL existing tracks through the improved
+      // duration-first matching engine. Only runs once per user.
+      if (tracks.some(t => t.youtubeId)) {
+        const settings = await ipc.settings.getSettings();
+        if (settings?.migration_v1_3_rematch !== 'done') {
+          get().rematchAll();
+        }
       }
     } catch (e: any) {
       set({ error: e.message, loading: false });
@@ -201,6 +213,28 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       console.error('[Library] Failed to resolve missing YouTube IDs:', e);
     } finally {
       set({ resolving: false });
+    }
+  },
+
+  rematchAll: async () => {
+    if (get().rematching) return;
+    set({ rematching: true });
+    console.log('[Library] Re-matching all tracks through v1.3 matching engine...');
+    try {
+      const { rematched, total } = await ipc.library.rematchAllTracks();
+      console.log(`[Library] Re-matched ${rematched}/${total} tracks`);
+
+      // Mark migration as complete so it only runs once
+      await ipc.settings.updateSettings({ migration_v1_3_rematch: 'done' });
+
+      // Refresh tracks to pick up new YouTube IDs
+      if (rematched > 0) {
+        await get().loadTracks();
+      }
+    } catch (e: any) {
+      console.error('[Library] Re-match failed:', e);
+    } finally {
+      set({ rematching: false });
     }
   },
 }));

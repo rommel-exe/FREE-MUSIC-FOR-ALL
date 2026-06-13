@@ -40,9 +40,9 @@
  *   Live / Concert             -1000
  *   "Live at/from/in..."       -800
  *   Artist with live/concert   -500
- *   Remix/Remixed              -500
- *   Cover                      -500
- *   Karaoke/Instrumental       -500
+ *   Remix / Remixed          -100000  ← DEVASTATING: never select non-original
+ *   Cover                    -100000  ← DEVASTATING: never select cover
+ *   Karaoke/Instrumental      -100000  ← DEVASTATING: never select instrumental
  *   Acoustic/Stripped          -500
  *   Nightcore/Sped/Slowed      -300
  *   Loop/Hour compilations     -300
@@ -90,9 +90,9 @@ export function computeTrustScore(
   if (/\b(live|concert)\b/i.test(artistLower) && !artistLower.includes(' - topic'))
     score -= 500;
 
-  if (/\b(remix|remixed)\b/i.test(titleLower)) score -= 500;
-  if (/\bcover\b/i.test(titleLower)) score -= 500;
-  if (/\b(karaoke|instrumental)\b/i.test(titleLower)) score -= 500;
+  if (/\b(remix|remixed)\b/i.test(titleLower)) score -= 100000;
+  if (/\bcover\b/i.test(titleLower)) score -= 100000;
+  if (/\b(karaoke|instrumental)\b/i.test(titleLower)) score -= 100000;
 
   // Acoustic / stripped versions — often fan recordings or alternate versions
   if (/\b(acoustic|stripped|unplugged)\b/i.test(titleLower)) score -= 500;

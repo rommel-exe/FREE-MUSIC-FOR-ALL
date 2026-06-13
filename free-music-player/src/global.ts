@@ -53,6 +53,7 @@ interface ElectronAPI {
     incrementPlayCount: (id: string) => Promise<void>;
     addRecentlyPlayed: (id: string) => Promise<void>;
     resolveMissingYoutubeIds: () => Promise<{ resolved: number; total: number }>;
+    rematchAllTracks: () => Promise<{ rematched: number; total: number; unchanged: number }>;
   };
   playlist: {
     getPlaylists: () => Promise<unknown>;

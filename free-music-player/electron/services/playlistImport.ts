@@ -16,10 +16,8 @@ import { promisify } from 'node:util';
 import { BrowserWindow } from 'electron';
 import {
   computeTrustScore,
-  computeDurationClosenessScore,
   getOfficialDuration,
   filterByExactDuration,
-  computeMultiFactorScore,
 } from '../utils/searchMatching';
 
 const execFileAsync = promisify(execFile);
@@ -61,58 +59,44 @@ async function searchExactYouTubeMatch(
     const results = await yt.searchSongs(query);
     if (!results || results.length === 0) return null;
 
-    // Step 1: Compute trust scores for ALL results (not just exact matches)
-    const queryStr = query;
-    const scored = results.map((r: any, i: number) => ({
-      r,
+    // Step 1: Compute trust scores for ALL results (needed for official duration voting)
+    const scored: Array<{
+      result: any;
+      duration: number;
+      trustScore: number;
+    }> = results.map((r: any) => ({
+      result: r,
+      duration: r.duration ?? 0,
       trustScore: computeTrustScore(
         r.name || r.title || '',
         r.artist?.name || '',
         r.duration ?? 0,
       ),
-      rankScore: 0,
     }));
 
     // Step 2: Determine official duration via trust-weighted voting
     const officialDuration = getOfficialDuration(
-      scored.map(s => ({ duration: s.r.duration ?? 0, score: s.trustScore })),
+      scored.map(s => ({ duration: s.duration, score: s.trustScore })),
     );
 
     // Use expected duration from Spotify if official determination fails
     const targetDuration = officialDuration > 0 ? officialDuration : expectedDuration;
     if (targetDuration <= 0) return null;
 
-    // Step 3: Score ALL results using the full multi-factor score
-    for (let i = 0; i < scored.length; i++) {
-      scored[i].rankScore = computeMultiFactorScore({
-        duration: scored[i].r.duration ?? 0,
-        query: queryStr,
-        artist: scored[i].r.artist?.name || '',
-        trustScore: scored[i].trustScore,
-        nativePosition: i,
-        officialDuration: targetDuration,
-      });
-    }
+    // Step 3: DURATION FIRST — filter ALL results by exact duration
+    // Duration is the definitive signal. Wrong length = wrong track.
+    const durationMatched = filterByExactDuration(scored, targetDuration);
+    if (durationMatched.length === 0) return null;
 
-    // Step 4: Sort by multi-factor score (exact-duration matches ALWAYS rank first)
-    scored.sort((a: any, b: any) => b.rankScore - a.rankScore);
+    // Step 4: Among exact-duration matches, pick the one with highest trust
+    // (Topic channel, Official Audio naturally outrank remixes/covers)
+    durationMatched.sort((a, b) => b.trustScore - a.trustScore);
+    const best = durationMatched[0];
 
-    // Step 5: Filter to only tracks passing trust threshold + exact duration
-    const trustFiltered = scored
-      .filter(s => s.trustScore >= 15)
-      .map(s => s.r);
-    
-    const exactDurationResults = filterByExactDuration(
-      trustFiltered,
-      targetDuration,
-    );
+    // Step 5: Only return if trust score is sufficient (≥ 15)
+    if (best.trustScore < 15) return null;
 
-    // Step 6: If we have results, the top one is the best match
-    if (exactDurationResults.length > 0) {
-      return exactDurationResults[0].videoId || exactDurationResults[0].id || null;
-    }
-
-    return null;
+    return best.result.videoId || best.result.id || null;
   } catch (err) {
     console.error(`[Import] YouTube search failed for "${artist} - ${title}":`, err);
     return null;

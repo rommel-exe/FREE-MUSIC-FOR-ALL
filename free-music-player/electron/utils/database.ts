@@ -566,6 +566,16 @@ export function clearAllStreamCache(): void {
   getDb().prepare('DELETE FROM stream_cache').run();
 }
 
+/** Remove a single entry from the stream cache by video ID. */
+export function removeStreamCache(videoId: string): void {
+  getDb().prepare('DELETE FROM stream_cache WHERE video_id = ?').run(videoId);
+}
+
+/** Remove a single entry from the verified tracks cache by video ID. */
+export function removeVerifiedTrack(videoId: string): void {
+  getDb().prepare('DELETE FROM verified_tracks WHERE video_id = ?').run(videoId);
+}
+
 // ─── Downloads ──────────────────────────────────────────────────────────
 
 export interface DownloadRecord {

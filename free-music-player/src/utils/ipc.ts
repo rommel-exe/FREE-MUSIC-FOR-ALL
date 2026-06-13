@@ -47,6 +47,9 @@ export const ipc = {
     resolveMissingYoutubeIds: (): Promise<{ resolved: number; total: number }> =>
       (api?.library?.resolveMissingYoutubeIds() as Promise<{ resolved: number; total: number }> | undefined) ??
       Promise.resolve({ resolved: 0, total: 0 }),
+    rematchAllTracks: (): Promise<{ rematched: number; total: number; unchanged: number }> =>
+      (api?.library?.rematchAllTracks() as Promise<{ rematched: number; total: number; unchanged: number }> | undefined) ??
+      Promise.resolve({ rematched: 0, total: 0, unchanged: 0 }),
   },
 
   playlist: {

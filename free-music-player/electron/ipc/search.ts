@@ -7,7 +7,6 @@ import {
   computeTrustScore,
   computeDurationClosenessScore,
   getOfficialDuration,
-  filterByExactDuration,
   computeMultiFactorScore,
 } from '../utils/searchMatching';
 
@@ -315,9 +314,17 @@ async function searchMusic(query: string, limit: number): Promise<SearchResult[]
       console.log('[search] Ranked by duration closeness + native position');
     }
 
-    // ── Step 4: Trust Filter + Duration Hard Filter ──
-    const trustFiltered = scored.filter(s => s.trustScore >= 15).map(s => s.r);
-    const filtered = filterByExactDuration(trustFiltered, officialDuration);
+    // ── Step 4: Duration Hard Filter FIRST, then Trust Filter ──
+    // Duration is the definitive signal for "is this the right track".
+    // Apply it BEFORE the trust filter so wrong-length tracks are eliminated
+    // immediately, and trust scoring only ranks among correct-length candidates.
+    const filtered = scored
+      .filter(s => !hasOfficialDuration || (
+        s.r.duration > 0 &&
+        Math.abs(Math.round(s.r.duration) - Math.round(officialDuration)) <= 2
+      ))
+      .filter(s => s.trustScore >= 15)
+      .map(s => s.r);
 
     // Cache results
     searchCache.set(q, { results: filtered, ts: Date.now() });
@@ -369,8 +376,14 @@ async function searchMusic(query: string, limit: number): Promise<SearchResult[]
       scored.sort((a, b) => b.rankScore - a.rankScore);
     }
 
-    const trustFiltered = scored.filter(s => s.trustScore >= 15).map(s => s.r);
-    const filtered = filterByExactDuration(trustFiltered, officialDuration);
+    // Duration FIRST, then trust (same order as primary path)
+    const filtered = scored
+      .filter(s => !hasOfficialDuration || (
+        s.r.duration > 0 &&
+        Math.abs(Math.round(s.r.duration) - Math.round(officialDuration)) <= 2
+      ))
+      .filter(s => s.trustScore >= 15)
+      .map(s => s.r);
     verifySearchResults(filtered).catch(() => {});
     return filtered.slice(0, limit);
   }
