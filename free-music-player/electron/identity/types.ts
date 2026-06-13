@@ -142,10 +142,12 @@ export interface ConfidenceComponents {
 }
 
 export const CONFIDENCE_WEIGHTS = {
-  titleScore: 0.35,
-  artistScore: 0.25,
-  trustScore: 0.20,
-  consensusScore: 0.20,
+  /** Duration score — the SINGLE most important signal. Song length is definitive. */
+  durationScore: 0.40,
+  titleScore: 0.25,
+  artistScore: 0.20,
+  trustScore: 0.10,
+  consensusScore: 0.05,
 } as const;
 
 export const CONFIDENCE_THRESHOLDS = {

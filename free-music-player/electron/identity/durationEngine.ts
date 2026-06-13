@@ -15,12 +15,15 @@ export function classifyDuration(
   localDuration: number,
   candidateDuration: number,
 ): DurationClass {
-  const tolerance = Math.max(2, localDuration * 0.015);
+  // 1% tolerance (floor 1s) — tighter than the old 1.5%. Song length must be
+  // nearly identical to be the same recording.
+  const tolerance = Math.max(1, localDuration * 0.01);
   const difference = Math.abs(Math.round(localDuration) - Math.round(candidateDuration));
 
   if (difference <= tolerance) return DurationClass.EXACT;
+  // VERY_CLOSE is 2× tolerance — still accepted but scores lower.
+  // CLOSE and INVALID are both rejected by the filter below.
   if (difference <= tolerance * 2) return DurationClass.VERY_CLOSE;
-  if (difference <= tolerance * 4) return DurationClass.CLOSE;
   return DurationClass.INVALID;
 }
 
@@ -32,9 +35,8 @@ export function computeDurationScore(durationClass: DurationClass): number {
     case DurationClass.EXACT:
       return 100;
     case DurationClass.VERY_CLOSE:
-      return 80;
+      return 60; // lowered from 80 — even "very close" should drag confidence
     case DurationClass.CLOSE:
-      return 40;
     case DurationClass.INVALID:
       return 0;
   }
@@ -65,8 +67,9 @@ export class DurationEngine {
   }
 
   /**
-   * Filter an array of candidates, removing INVALID ones and attaching
-   * duration metadata to the survivors.
+   * Filter an array of candidates, keeping ONLY EXACT and VERY_CLOSE
+   * duration matches. CLOSE and INVALID are rejected — if the length
+   * isn't nearly identical, it's the wrong track.
    */
   filter(localDuration: number, candidates: CandidateTrack[]): ScoredCandidate[] {
     const scored: ScoredCandidate[] = [];
@@ -74,8 +77,11 @@ export class DurationEngine {
     for (const candidate of candidates) {
       const result = this.check(localDuration, candidate.duration);
 
-      // Immediate rejection — no scoring, no exceptions.
-      if (result.durationClass === DurationClass.INVALID) continue;
+      // Reject INVALID and CLOSE — only EXACT and VERY_CLOSE survive.
+      if (
+        result.durationClass === DurationClass.INVALID ||
+        result.durationClass === DurationClass.CLOSE
+      ) continue;
 
       scored.push({
         ...candidate,
@@ -94,9 +100,10 @@ export class DurationEngine {
   }
 
   /**
-   * Dynamic tolerance: max(2s, 1.5% of duration).
+   * Dynamic tolerance: max(1s, 1% of duration).
+   * Tighter than the old 1.5% — song length must be nearly identical.
    */
   getTolerance(duration: number): number {
-    return Math.max(2, duration * 0.015);
+    return Math.max(1, duration * 0.01);
   }
 }

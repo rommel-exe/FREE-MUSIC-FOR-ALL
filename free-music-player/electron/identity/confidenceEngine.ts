@@ -14,6 +14,7 @@ export function computeCandidateScore(
 ): number {
   const w = { ...CONFIDENCE_WEIGHTS, ...weights };
   const score =
+    (candidate.durationScore ?? 0) * w.durationScore +
     (candidate.titleScore ?? 0) * w.titleScore +
     (candidate.artistScore ?? 0) * w.artistScore +
     (candidate.trustScore ?? 0) * w.trustScore +
@@ -36,13 +37,15 @@ export class ConfidenceEngine {
   /**
    * Compute final confidence score for a ScoredCandidate.
    *
-   * Duration is intentionally excluded — it already filtered candidates
-   * upstream via the DurationEngine.
+   * Duration score is the DOMINANT factor (40% weight). Song length is
+   * the single most reliable signal — if the duration doesn't match, it
+   * should drag the total down regardless of title/artist text match.
    */
   compute(candidate: ScoredCandidate, consensusScore?: number): ConfidenceResult {
     const cs = consensusScore ?? candidate.consensusScore ?? 0;
 
     const finalScore =
+      (candidate.durationScore ?? 0) * CONFIDENCE_WEIGHTS.durationScore +
       (candidate.titleScore ?? 0) * CONFIDENCE_WEIGHTS.titleScore +
       (candidate.artistScore ?? 0) * CONFIDENCE_WEIGHTS.artistScore +
       (candidate.trustScore ?? 0) * CONFIDENCE_WEIGHTS.trustScore +

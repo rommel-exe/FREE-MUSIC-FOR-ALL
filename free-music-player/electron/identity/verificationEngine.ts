@@ -29,7 +29,7 @@ export const VERIFICATION_SEPARATION_MIN = 8;
  * Absolute duration tolerance in seconds used by the pure-function
  * fallback when no durationEngine is injected.
  */
-const FALLBACK_DURATION_TOLERANCE_SECONDS = 3;
+const FALLBACK_DURATION_TOLERANCE_SECONDS = 2;
 
 // ── Pure helper functions ──────────────────────────────────────────
 
@@ -50,8 +50,9 @@ export function checkDurationConsistency(
 ): boolean {
   if (localDuration <= 0 || candidateDuration <= 0) return false;
   const diff = Math.abs(localDuration - candidateDuration);
-  // Use percentage-based tolerance (1.5%) for long tracks and a floor of 3s
-  const tolerance = Math.max(FALLBACK_DURATION_TOLERANCE_SECONDS, localDuration * 0.015);
+  // Use percentage-based tolerance (1%) for longer tracks and a floor of 2s.
+  // Matches the tightened threshold in DurationEngine.
+  const tolerance = Math.max(FALLBACK_DURATION_TOLERANCE_SECONDS, localDuration * 0.01);
   return diff <= tolerance;
 }
 
