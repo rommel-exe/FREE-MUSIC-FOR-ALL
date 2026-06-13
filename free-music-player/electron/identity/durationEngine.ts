@@ -15,14 +15,14 @@ export function classifyDuration(
   localDuration: number,
   candidateDuration: number,
 ): DurationClass {
-  // 1% tolerance (floor 1s) — tighter than the old 1.5%. Song length must be
-  // nearly identical to be the same recording.
-  const tolerance = Math.max(1, localDuration * 0.01);
+  // 1.2% tolerance (floor 2s) — tighter than the old 1.5% but still accounts
+  // for real-world encoding/platform variance (±2-3s is common for same track).
+  const tolerance = Math.max(2, localDuration * 0.012);
   const difference = Math.abs(Math.round(localDuration) - Math.round(candidateDuration));
 
   if (difference <= tolerance) return DurationClass.EXACT;
   // VERY_CLOSE is 2× tolerance — still accepted but scores lower.
-  // CLOSE and INVALID are both rejected by the filter below.
+  // Everything else (former CLOSE / INVALID) is rejected by the filter below.
   if (difference <= tolerance * 2) return DurationClass.VERY_CLOSE;
   return DurationClass.INVALID;
 }
@@ -100,10 +100,11 @@ export class DurationEngine {
   }
 
   /**
-   * Dynamic tolerance: max(1s, 1% of duration).
-   * Tighter than the old 1.5% — song length must be nearly identical.
+   * Dynamic tolerance: max(2s, 1.2% of duration).
+   * Tight enough to reject wrong tracks, loose enough to accept encoding
+   * variance across platforms (±2-3s for the same recording).
    */
   getTolerance(duration: number): number {
-    return Math.max(1, duration * 0.01);
+    return Math.max(2, duration * 0.012);
   }
 }

@@ -50,9 +50,9 @@ export function checkDurationConsistency(
 ): boolean {
   if (localDuration <= 0 || candidateDuration <= 0) return false;
   const diff = Math.abs(localDuration - candidateDuration);
-  // Use percentage-based tolerance (1%) for longer tracks and a floor of 2s.
-  // Matches the tightened threshold in DurationEngine.
-  const tolerance = Math.max(FALLBACK_DURATION_TOLERANCE_SECONDS, localDuration * 0.01);
+  // 1.2% tolerance (floor 2s) — matches DurationEngine.
+  // Tighter than the old 1.5% but allows for encoding/platform variance.
+  const tolerance = Math.max(FALLBACK_DURATION_TOLERANCE_SECONDS, localDuration * 0.012);
   return diff <= tolerance;
 }
 
