@@ -74,11 +74,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         get().resolveMissingIds();
       }
 
-      // v1.3.0 migration: re-match ALL existing tracks through the improved
-      // duration-first matching engine. Only runs once per user.
+      // v1.3.1 migration: re-match ALL existing tracks through the fixed
+      // duration-first + multi-factor matching engine.
+      // Re-runs even if v1.3.0 rematch already ran (that version had a bug
+      // where trust-only sort picked wrong-artist Topic channels).
       if (tracks.some(t => t.youtubeId)) {
         const settings = await ipc.settings.getSettings();
-        if (settings?.migration_v1_3_rematch !== 'done') {
+        if (settings?.migration_v1_3_1_rematch !== 'done') {
           get().rematchAll();
         }
       }
@@ -225,7 +227,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       console.log(`[Library] Re-matched ${rematched}/${total} tracks`);
 
       // Mark migration as complete so it only runs once
-      await ipc.settings.updateSettings({ migration_v1_3_rematch: 'done' });
+      await ipc.settings.updateSettings({ migration_v1_3_1_rematch: 'done' });
 
       // Refresh tracks to pick up new YouTube IDs
       if (rematched > 0) {
