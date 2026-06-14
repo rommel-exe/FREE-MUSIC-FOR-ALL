@@ -38,7 +38,7 @@ import { DurationEngine } from './durationEngine';
 import { TitleEngine } from './titleEngine';
 import { ArtistEngine } from './artistEngine';
 import { VersionEngine } from './versionEngine';
-import { TrustEngine, computeTrustScore } from './trustEngine';
+import { TrustEngine } from './trustEngine';
 import { CandidateProvider } from './candidateProvider';
 import { ConsensusEngine } from './consensusEngine';
 import { ConfidenceEngine } from './confidenceEngine';
@@ -1042,42 +1042,63 @@ export class TrackIdentityEngine {
   // ── Private Helpers ─────────────────────────────────────────────
 
   /**
-   * Compute a trust-weighted canonical duration from the candidate pool.
+   * Compute a canonical duration from the candidate pool using density-based
+   * clustering.
    *
-   * Uses the same approach as searchMatching.getOfficialDuration() —
-   * each candidate's duration is weighted by its trust score, so official
-   * uploads (Topic channel: +100, Official Audio: +50) dominate over
-   * generic uploads (score ~15). This gives us a YouTube-consensus duration
-   * that's more reliable than potentially wrong source metadata.
+   * Unlike the trust-based scoring used for final ranking (which penalizes
+   * remixes/covers/etc.), this method considers ALL candidates regardless of
+   * remix status. If the TRACK ITSELF is a remix, every legitimate YouTube
+   * result will contain "remix" and trust-based filtering would reject them
+   * all, producing no consensus.
    *
-   * Returns 0 if no trustworthy consensus can be determined.
+   * Approach:
+   *  1. Collect all candidate durations (filtering out implausible outliers).
+   *  2. Remove extreme outliers (>50% from median).
+   *  3. For each remaining duration, count neighbors within a 10-second
+   *     window (density estimation / mean-shift style).
+   *  4. Return the duration with the densest neighborhood (tie-break: shorter).
+   *
+   * This works for both ordinary tracks (most results cluster around the
+   * official duration) and remix tracks (where all results are remixes but
+   * still cluster around the canonical length).
+   *
+   * Returns 0 if no reasonable consensus can be determined.
    */
   private computeTrustWeightedDuration(candidates: CandidateTrack[]): number {
-    const DURATION_TRUST_THRESHOLD = 15;
-    const durationWeight = new Map<number, number>();
+    // Step 1: collect plausible durations (10s–1hr range)
+    const durations = candidates
+      .map(c => Math.round(c.duration))
+      .filter(d => d > 10 && d < 3600);
 
-    for (const c of candidates) {
-      if (c.duration <= 0) continue;
-      const trust = computeTrustScore(c.title, c.artist, c.duration);
-      if (trust < DURATION_TRUST_THRESHOLD) continue;
+    if (durations.length === 0) return 0;
 
-      const dur = Math.round(c.duration);
-      durationWeight.set(dur, (durationWeight.get(dur) ?? 0) + trust);
-    }
+    // Step 2: remove outliers >50% from median
+    const sorted = [...durations].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)];
+    const outlierThreshold = Math.max(median * 0.5, 30); // at least 30s
+    const filtered = durations.filter(d => Math.abs(d - median) <= outlierThreshold);
 
-    if (durationWeight.size === 0) return 0;
+    if (filtered.length === 0) return 0;
 
-    let modeDuration = 0;
-    let maxWeight = 0;
-    for (const [dur, weight] of durationWeight) {
-      // Tie-break: prefer shorter duration (avoids extended mixes/loops)
-      if (weight > maxWeight || (weight === maxWeight && (modeDuration === 0 || dur < modeDuration))) {
-        maxWeight = weight;
-        modeDuration = dur;
+    // Step 3: density estimation — find the duration with the most
+    // neighbors within a 10-second window
+    const WINDOW = 10;
+    let bestDuration = 0;
+    let bestDensity = 0;
+
+    for (const candidate of filtered) {
+      let density = 0;
+      for (const other of filtered) {
+        if (Math.abs(other - candidate) <= WINDOW) density++;
+      }
+      // Tie-break: prefer shorter duration
+      if (density > bestDensity || (density === bestDensity && (bestDuration === 0 || candidate < bestDuration))) {
+        bestDensity = density;
+        bestDuration = candidate;
       }
     }
 
-    return modeDuration;
+    return bestDuration;
   }
 
   /** Ensure the engine has been initialized. */
