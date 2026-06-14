@@ -17,7 +17,7 @@ export interface AudioServiceCallbacks {
   onTimeUpdate: (time: number) => void;
   onEnded: () => void;
   onLoadedMetadata: (duration: number) => void;
-  onError: () => void;
+  onError: (errorCode?: number) => void;
   onWaiting: () => void;
   onCanPlay: () => void;
 }
@@ -141,7 +141,7 @@ export class AudioService {
 
     el.addEventListener('error', () => {
       if (el !== this.active) return;
-      this.callbacks?.onError();
+      this.callbacks?.onError(el.error?.code);
     });
 
     el.addEventListener('waiting', () => {

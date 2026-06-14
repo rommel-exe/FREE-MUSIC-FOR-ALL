@@ -181,6 +181,10 @@ export class PrefetchEngine {
   getSource(videoId: string): MediaSource | null {
     const entry = this.cache.get(videoId);
     if (!entry || !entry.resolved) return null;
+    if (entry.source && entry.source.expiresAt < Date.now()) {
+        this.cache.delete(videoId);
+        return null;
+    }
     return entry.source;
   }
 

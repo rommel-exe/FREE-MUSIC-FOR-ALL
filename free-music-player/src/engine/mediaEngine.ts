@@ -108,6 +108,9 @@ export class MediaEngine {
   private _lastPrefetchTime = 0;
   private _preloadTriggered = false;
 
+  /** Prevents stacked nextTrack()/previousTrack() calls from rapid error handling. */
+  private _navigationInFlight = false;
+
   constructor() {
     this.audio = new AudioService();
     this.setupAudioCallbacks();
@@ -209,8 +212,16 @@ export class MediaEngine {
         this.emit();
       },
 
-      onError: () => {
-        console.error('[MediaEngine] Audio error');
+      onError: (errorCode) => {
+        console.error('[MediaEngine] Audio error, code:', errorCode);
+
+        // MEDIA_ERR_ABORTED (1) — user or browser aborted load, usually benign
+        if (errorCode === 1) {
+          this._isLoading = false;
+          this.emit();
+          return;
+        }
+
         this._isLoading = false;
         this.emit();
 
@@ -226,11 +237,19 @@ export class MediaEngine {
           return;
         }
 
+        // Capture currentVideoId at error time — prevents race where
+        // user clicks a new track before the timeout fires, causing
+        // nextTrack() to be called on the wrong track.
+        // Network (2) and Decode (3) errors are often transient — wait longer.
+        // SRC_NOT_SUPPORTED (4) means the URL is dead — skip faster.
+        const errorVideoId = this.currentVideoId;
+        const delay = (errorCode === 2 || errorCode === 3) ? 3000 : 500;
+
         setTimeout(() => {
-          if (this._currentTrack?.youtubeId === this.currentVideoId) {
+          if (this.currentVideoId === errorVideoId) {
             this.nextTrack();
           }
-        }, 500);
+        }, delay);
       },
 
       onWaiting: () => {
@@ -382,59 +401,71 @@ export class MediaEngine {
   // ===================================================================
 
   nextTrack(): void {
-    const qs = queueEngine.getState();
+    if (this._navigationInFlight) return;
+    this._navigationInFlight = true;
+    try {
+      const qs = queueEngine.getState();
 
-    // Repeat-one: restart the current track
-    if (qs.repeatMode === 'one' && this._currentTrack) {
-      this.seek(0);
-      return;
-    }
-
-    const nextIndex = qs.queueIndex + 1;
-
-    if (nextIndex >= qs.queue.length) {
-      if (qs.repeatMode === 'all') {
-        queueEngine.setIndex(0);
-      } else {
-        // End of queue — stop
-        this._isPlaying = false;
-        this._currentTrack = null;
-        this.currentVideoId = null;
-        this.audio.pause();
-        this.emit();
-        this.saveSession();
+      // Repeat-one: restart the current track
+      if (qs.repeatMode === 'one' && this._currentTrack) {
+        this.seek(0);
         return;
       }
-    } else {
-      queueEngine.setIndex(nextIndex);
-    }
 
-    const next = queueEngine.getCurrentTrack();
-    if (next) {
-      queueEngine.recordHistory(next);
-      this.playTrackInternal(next, ++this.playGen);
-      recommendationEngine.recordPlay(next);
-      prefetchEngine.prefetch(qs.queue, queueEngine.currentIndex);
-      this.saveSession();
+      const nextIndex = qs.queueIndex + 1;
+
+      if (nextIndex >= qs.queue.length) {
+        if (qs.repeatMode === 'all') {
+          queueEngine.setIndex(0);
+        } else {
+          // End of queue — stop
+          this._isPlaying = false;
+          this._currentTrack = null;
+          this.currentVideoId = null;
+          this.audio.pause();
+          this.emit();
+          this.saveSession();
+          return;
+        }
+      } else {
+        queueEngine.setIndex(nextIndex);
+      }
+
+      const next = queueEngine.getCurrentTrack();
+      if (next) {
+        queueEngine.recordHistory(next);
+        this.playTrackInternal(next, ++this.playGen);
+        recommendationEngine.recordPlay(next);
+        prefetchEngine.prefetch(qs.queue, queueEngine.currentIndex);
+        this.saveSession();
+      }
+    } finally {
+      this._navigationInFlight = false;
     }
   }
 
   previousTrack(): void {
-    const qs = queueEngine.getState();
-    const prevIndex = qs.queueIndex - 1;
+    if (this._navigationInFlight) return;
+    this._navigationInFlight = true;
+    try {
+      const qs = queueEngine.getState();
+      const prevIndex = qs.queueIndex - 1;
 
-    if (prevIndex < 0) {
-      queueEngine.setIndex(qs.queue.length - 1);
-    } else {
-      queueEngine.setIndex(prevIndex);
-    }
+      if (prevIndex < 0) {
+        queueEngine.setIndex(qs.queue.length - 1);
+      } else {
+        queueEngine.setIndex(prevIndex);
+      }
 
-    const prev = queueEngine.getCurrentTrack();
-    if (prev) {
-      queueEngine.recordHistory(prev);
-      this.playTrackInternal(prev, ++this.playGen);
-      recommendationEngine.recordPlay(prev);
-      this.saveSession();
+      const prev = queueEngine.getCurrentTrack();
+      if (prev) {
+        queueEngine.recordHistory(prev);
+        this.playTrackInternal(prev, ++this.playGen);
+        recommendationEngine.recordPlay(prev);
+        this.saveSession();
+      }
+    } finally {
+      this._navigationInFlight = false;
     }
   }
 
