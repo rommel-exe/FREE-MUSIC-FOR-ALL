@@ -16,20 +16,6 @@ const execFileAsync = promisify(execFile);
 
 const YTDLP_PATH = '/Library/Frameworks/Python.framework/Versions/3.12/bin/yt-dlp';
 
-// ── YouTube Music API ──────────────────────────────────────────────────
-
-let ytmusicClient: any = null;
-
-async function getYTMusic(): Promise<any> {
-  if (!ytmusicClient) {
-    const mod = await import('ytmusic-api');
-    const YTMusic = mod.default;
-    ytmusicClient = new YTMusic();
-    await ytmusicClient.initialize();
-  }
-  return ytmusicClient;
-}
-
 // ── In-memory search cache ──────────────────────────────────────────────
 
 const searchCache = new Map<string, { results: SearchResult[]; ts: number }>();
@@ -55,29 +41,6 @@ function parseViewCount(text: string): number | undefined {
   else if (suffix === 'B') num *= 1_000_000_000;
 
   return Math.round(num);
-}
-
-/**
- * Recursively walk the raw API response to find all
- * musicResponsiveListItemRenderer objects.
- *
- * The ytmusic-api library discards view counts during parsing.
- * We walk the raw response ourselves to extract them.
- */
-function walkMusicResponsiveListItems(data: any): any[] {
-  const items: any[] = [];
-  function walk(obj: any): void {
-    if (!obj || typeof obj !== 'object') return;
-    if (Array.isArray(obj)) {
-      obj.forEach(walk);
-    } else if (obj.musicResponsiveListItemRenderer) {
-      items.push(obj.musicResponsiveListItemRenderer);
-    } else {
-      for (const val of Object.values(obj)) walk(val);
-    }
-  }
-  walk(data);
-  return items;
 }
 
 /**
@@ -200,75 +163,35 @@ async function searchMusic(query: string, limit: number): Promise<SearchResult[]
   }
 
   try {
-    const yt = await getYTMusic();
+    // ── Search via yt-dlp (handles YouTube anti-bot measures) ──
+    const { stdout } = await execFileAsync(YTDLP_PATH, [
+      '--flat-playlist',
+      '--dump-json',
+      '--no-warnings',
+      `ytsearch${Math.min(limit, 50)}:${q}`,
+    ], { timeout: 15_000 });
 
-    // ── Step 1: Get basic results via library's tested searchSongs() ──
-    // This gives reliable parsing for videoId, title, artist, album, duration
-    const results = await yt.searchSongs(q);
+    const results: SearchResult[] = stdout
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line: string) => {
+        const item = JSON.parse(line);
+        return {
+          id: item.id || '',
+          title: item.title || '',
+          artist: item.channel || item.uploader || '',
+          duration: Math.round(item.duration ?? 0),
+          viewCount: item.view_count,
+          thumbnail: item.thumbnails?.[0]?.url
+            || `https://i.ytimg.com/vi/${item.id}/maxresdefault.jpg`
+            || '',
+          url: `https://www.youtube.com/watch?v=${item.id || ''}`,
+        };
+      })
+      .filter((r: SearchResult) => r.id);
 
-    const mapped: SearchResult[] = (results || []).map((item: any) => ({
-      id: item.videoId || '',
-      title: item.name || item.title || '',
-      artist: item.artist?.name || '',
-      duration: typeof item.duration === 'number' ? item.duration : 0,
-      thumbnail: getBestThumbnail(item.thumbnails, item.videoId),
-      url: `https://www.youtube.com/watch?v=${item.videoId || ''}`,
-    })).filter((r: SearchResult) => r.id);
-
-    // Dedup by id
-    const deduped = new Map<string, SearchResult>();
-    for (const r of mapped) {
-      if (!deduped.has(r.id)) deduped.set(r.id, r);
-    }
-    const unique = Array.from(deduped.values());
-
-    // ── Step 2: Extract view counts from raw API response (bonus enrichment) ──
-    // The library discards subtitle data; we call constructRequest separately
-    // to get view counts from the flexColumns subtitle text.
-    const viewCountMap = new Map<string, number>();
-    try {
-      const searchData = await yt.constructRequest('search', {
-        query: q,
-        params: 'Eg-KAQwIARAAGAAgACgAMABqChAEEAMQCRAFEAo%3D',
-      });
-      const rawItems = walkMusicResponsiveListItems(searchData);
-      for (const item of rawItems) {
-        const vid = item.playlistItemData?.videoId;
-        if (!vid) continue;
-        // Collect all text runs from flexColumns
-        const runs: string[] = [];
-        for (const col of (item.flexColumns || [])) {
-          const colRuns = col?.musicResponsiveListItemFlexColumnRenderer?.text?.runs;
-          if (colRuns) {
-            for (const run of colRuns) {
-              if (run?.text) runs.push(run.text);
-            }
-          }
-        }
-        // Look for view count in any run
-        for (const text of runs) {
-          const vc = parseViewCount(text);
-          if (vc !== undefined && vc > 0) {
-            viewCountMap.set(vid, vc);
-            break;
-          }
-        }
-      }
-      // Debug: log first 5 view counts to verify parsing
-      const sample: string[] = [];
-      for (const [vid, vc] of viewCountMap) {
-        sample.push(`${vid}=${vc}`);
-        if (sample.length >= 5) break;
-      }
-      console.log(`[search] View counts: ${viewCountMap.size}/${unique.length} results have counts. Samples:`, sample.join(', '));
-    } catch (e) {
-      console.warn('[search] View count extraction failed (non-fatal):', e);
-    }
-
-    // Attach view counts to results
-    for (const r of unique) {
-      r.viewCount = viewCountMap.get(r.id);
-    }
+    const unique = Array.from(new Map(results.map(r => [r.id, r])).values());
 
     // ── Step 3: Score + rank (DURATION CLOSENESS DOMINATES) ──
     // Duration closeness is the PRIMARY signal. View counts, native order,
@@ -329,8 +252,8 @@ async function searchMusic(query: string, limit: number): Promise<SearchResult[]
     return filtered.slice(0, limit);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[search] ytmusic-api failed:', err);
-    // Fallback to yt-dlp search — yt-dlp reliably returns view_count
+    console.error('[search] yt-dlp search failed, trying youtube-dl-exec fallback:', err);
+    // Fallback via youtube-dl-exec package
     const fallback = await searchWithYtdlp(q, limit * 2);
 
     const scored = fallback.map((r, i) => ({

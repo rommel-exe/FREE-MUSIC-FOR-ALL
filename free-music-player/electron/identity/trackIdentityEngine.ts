@@ -38,7 +38,7 @@ import { DurationEngine } from './durationEngine';
 import { TitleEngine } from './titleEngine';
 import { ArtistEngine } from './artistEngine';
 import { VersionEngine } from './versionEngine';
-import { TrustEngine } from './trustEngine';
+import { TrustEngine, computeTrustScore } from './trustEngine';
 import { CandidateProvider } from './candidateProvider';
 import { ConsensusEngine } from './consensusEngine';
 import { ConfidenceEngine } from './confidenceEngine';
@@ -253,16 +253,55 @@ export class TrackIdentityEngine {
       return result;
     }
 
-    // Step 6: Filter by duration (removes INVALID candidates)
+    // Step 6: Compute trust-weighted canonical duration from candidates
+    // YouTube's search results provide a cross-check against wrong source metadata
+    // (e.g., Spotify reporting 3:43 for a track whose official version is 2:40).
+    const canonicalDuration = this.computeTrustWeightedDuration(deduped);
+
+    // Use canonical as primary filter when it's reliable and local duration is
+    // either unknown (0) or clearly wrong (differs by >15% or 10s from consensus).
+    let filterDuration = normalizedTrack.duration;
+    if (canonicalDuration > 0) {
+      if (normalizedTrack.duration <= 0) {
+        console.log(
+          `[TrackIdentityEngine] Using canonical duration ${canonicalDuration}s (local duration unknown) for "${normalizedTrack.titleCanonical}"`
+        );
+        filterDuration = canonicalDuration;
+      } else {
+        const diffThreshold = Math.max(10, normalizedTrack.duration * 0.15);
+        const diff = Math.abs(normalizedTrack.duration - canonicalDuration);
+        if (diff > diffThreshold) {
+          console.warn(
+            `[TrackIdentityEngine] Local duration ${normalizedTrack.duration}s differs from YouTube consensus ${canonicalDuration}s (Δ${diff}s) for "${normalizedTrack.titleCanonical}" — using canonical duration`
+          );
+          filterDuration = canonicalDuration;
+        }
+      }
+    }
+
+    // Step 7: Filter by duration (removes INVALID candidates)
     let scoredCandidates: ScoredCandidate[];
     try {
       scoredCandidates = this.durationEngine.filter(
-        normalizedTrack.duration,
+        filterDuration,
         deduped,
       );
     } catch (err) {
       console.error('[TrackIdentityEngine] duration filter failed:', err);
       scoredCandidates = [];
+    }
+
+    // Fallback: retry with local duration if canonical produced nothing
+    if (scoredCandidates.length === 0 && filterDuration !== normalizedTrack.duration) {
+      console.warn(
+        `[TrackIdentityEngine] Canonical duration ${filterDuration}s produced no candidates ` +
+        `for "${normalizedTrack.titleCanonical}" — falling back to local ${normalizedTrack.duration}s`
+      );
+      try {
+        scoredCandidates = this.durationEngine.filter(normalizedTrack.duration, deduped);
+      } catch {
+        scoredCandidates = [];
+      }
     }
 
     if (scoredCandidates.length === 0) {
@@ -651,15 +690,41 @@ export class TrackIdentityEngine {
       return this.buildEmptyResult(track, 'No candidates found');
     }
 
-    // Step 3: Filter by duration
+    // Step 3: Compute trust-weighted canonical duration from candidates
+    const canonicalDuration = this.computeTrustWeightedDuration(deduped);
+    let filterDuration = normalizedTrack.duration;
+    if (canonicalDuration > 0) {
+      if (normalizedTrack.duration <= 0) {
+        filterDuration = canonicalDuration;
+      } else {
+        const diffThreshold = Math.max(10, normalizedTrack.duration * 0.15);
+        if (Math.abs(normalizedTrack.duration - canonicalDuration) > diffThreshold) {
+          console.warn(
+            `[TrackIdentityEngine] rematch: local duration ${normalizedTrack.duration}s vs YouTube consensus ${canonicalDuration}s for "${normalizedTrack.titleCanonical}" — using canonical`
+          );
+          filterDuration = canonicalDuration;
+        }
+      }
+    }
+
+    // Step 4: Filter by duration
     let scoredCandidates: ScoredCandidate[];
     try {
       scoredCandidates = this.durationEngine.filter(
-        normalizedTrack.duration,
+        filterDuration,
         deduped,
       );
     } catch {
       scoredCandidates = [];
+    }
+
+    // Fallback: retry with local duration if canonical produced nothing
+    if (scoredCandidates.length === 0 && filterDuration !== normalizedTrack.duration) {
+      try {
+        scoredCandidates = this.durationEngine.filter(normalizedTrack.duration, deduped);
+      } catch {
+        scoredCandidates = [];
+      }
     }
 
     if (scoredCandidates.length === 0) {
@@ -975,6 +1040,45 @@ export class TrackIdentityEngine {
   }
 
   // ── Private Helpers ─────────────────────────────────────────────
+
+  /**
+   * Compute a trust-weighted canonical duration from the candidate pool.
+   *
+   * Uses the same approach as searchMatching.getOfficialDuration() —
+   * each candidate's duration is weighted by its trust score, so official
+   * uploads (Topic channel: +100, Official Audio: +50) dominate over
+   * generic uploads (score ~15). This gives us a YouTube-consensus duration
+   * that's more reliable than potentially wrong source metadata.
+   *
+   * Returns 0 if no trustworthy consensus can be determined.
+   */
+  private computeTrustWeightedDuration(candidates: CandidateTrack[]): number {
+    const DURATION_TRUST_THRESHOLD = 15;
+    const durationWeight = new Map<number, number>();
+
+    for (const c of candidates) {
+      if (c.duration <= 0) continue;
+      const trust = computeTrustScore(c.title, c.artist, c.duration);
+      if (trust < DURATION_TRUST_THRESHOLD) continue;
+
+      const dur = Math.round(c.duration);
+      durationWeight.set(dur, (durationWeight.get(dur) ?? 0) + trust);
+    }
+
+    if (durationWeight.size === 0) return 0;
+
+    let modeDuration = 0;
+    let maxWeight = 0;
+    for (const [dur, weight] of durationWeight) {
+      // Tie-break: prefer shorter duration (avoids extended mixes/loops)
+      if (weight > maxWeight || (weight === maxWeight && (modeDuration === 0 || dur < modeDuration))) {
+        maxWeight = weight;
+        modeDuration = dur;
+      }
+    }
+
+    return modeDuration;
+  }
 
   /** Ensure the engine has been initialized. */
   private ensureInitialized(): void {

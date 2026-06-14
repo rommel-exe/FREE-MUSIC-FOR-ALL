@@ -524,6 +524,11 @@ function registerWindowControls(): void {
 // ─── App lifecycle ──────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
+  // Global unhandled rejection handler to prevent silent crashes
+  process.on('unhandledRejection', (reason) => {
+    console.error('[Main] Unhandled rejection:', reason);
+  });
+
   nativeTheme.themeSource = 'dark';
 
   initDatabase();

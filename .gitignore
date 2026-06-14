@@ -30,3 +30,12 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+
+# === CodeGraph Index ===
+.codegraph/
+
+# === Temporary scripts ===
+electron-run-prematch.js
+prematch-direct.cjs
+run-prematch.cjs
+run-prematch.mjs

@@ -1,10 +1,17 @@
 /**
  * CandidateProvider — multi-strategy YouTube Music search for the identity engine.
  *
- * Searches YouTube Music using several query strategies (artist+title, title only,
- * artist only, etc.) in parallel, deduplicates by videoId, and returns ranked
- * candidates for downstream scoring.
+ * Searches YouTube using several query strategies (artist+title, title only,
+ * artist only, etc.) in parallel via yt-dlp, deduplicates by videoId, and
+ * returns ranked candidates for downstream scoring.
+ *
+ * yt-dlp is used INSTEAD of ytmusic-api because YouTube actively blocks the
+ * ytmusic-api library (400 errors / ECONNRESET). yt-dlp handles YouTube's
+ * anti-bot measures natively and is already a project dependency.
  */
+
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 import type {
   CandidateQuery,
@@ -13,20 +20,113 @@ import type {
   CandidateProviderResult,
 } from './types';
 
+const execFileAsync = promisify(execFile);
+
 // ═══════════════════════════════════════════════════════════════════════════
-//  Lazy ytmusic-api singleton (same pattern as searchMatching.ts)
+//  yt-dlp binary detection
 // ═══════════════════════════════════════════════════════════════════════════
 
-let _ytmusicClient: any = null;
+const HARDCODED_YTDLP = '/Library/Frameworks/Python.framework/Versions/3.12/bin/yt-dlp';
+let _ytdlpPath: string | null = null;
 
-async function getYTMusic(): Promise<any> {
-  if (!_ytmusicClient) {
-    const mod = await import('ytmusic-api');
-    const YTMusic = mod.default;
-    _ytmusicClient = new YTMusic();
-    await _ytmusicClient.initialize();
+async function findYtDlp(): Promise<string> {
+  if (_ytdlpPath) return _ytdlpPath;
+
+  // Try common locations
+  const candidates = [
+    HARDCODED_YTDLP,
+    '/opt/homebrew/bin/yt-dlp',
+    '/usr/local/bin/yt-dlp',
+    '/usr/bin/yt-dlp',
+  ];
+
+  for (const p of candidates) {
+    try {
+      await execFileAsync(p, ['--version'], { timeout: 3000 });
+      _ytdlpPath = p;
+      return p;
+    } catch {
+      continue;
+    }
   }
-  return _ytmusicClient;
+
+  // Try `which yt-dlp`
+  try {
+    const { stdout } = await execFileAsync('which', ['yt-dlp'], { timeout: 3000 });
+    const p = stdout.trim();
+    if (p) {
+      _ytdlpPath = p;
+      return p;
+    }
+  } catch {
+    // not found via which
+  }
+
+  // Fall back to hardcoded path (will fail at exec time)
+  _ytdlpPath = HARDCODED_YTDLP;
+  return _ytdlpPath;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  yt-dlp search implementation
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface YtDlpSearchResult {
+  id: string;
+  title: string;
+  duration?: number;
+  channel?: string;
+  uploader?: string;
+  channel_id?: string;
+  view_count?: number;
+  thumbnails?: Array<{ url: string; height?: number; width?: number }>;
+  channel_is_verified?: boolean;
+}
+
+/**
+ * Search YouTube using yt-dlp.
+ *
+ * Uses `--flat-playlist` so it only fetches search-result metadata (fast)
+ * without extracting each video's detailed info.
+ *
+ * @param query - Search query string.
+ * @param limit - Max results (default 15, yt-dlp max recommended is ~50).
+ * @returns Array of raw yt-dlp search result objects.
+ */
+async function searchYtDlp(query: string, limit: number = 15): Promise<YtDlpSearchResult[]> {
+  if (!query.trim()) return [];
+
+  const ytdlp = await findYtDlp();
+
+  try {
+    const { stdout } = await execFileAsync(ytdlp, [
+      '--flat-playlist',
+      '--dump-json',
+      '--no-warnings',
+      `ytsearch${limit}:${query}`,
+    ], { timeout: 15_000 });
+
+    // yt-dlp outputs one JSON object per line (NDJSON)
+    const lines = stdout.trim().split('\n').filter(Boolean);
+    return lines.map((line) => JSON.parse(line));
+  } catch (err) {
+    console.error(`[CandidateProvider] yt-dlp search failed for "${query}":`, err);
+    return [];
+  }
+}
+
+/**
+ * Search YouTube using yt-dlp and map results to CandidateTrack format.
+ * Never throws — returns empty array on any error.
+ */
+export async function searchYouTube(
+  query: string,
+  limit: number = 25,
+): Promise<CandidateTrack[]> {
+  if (!query.trim()) return [];
+
+  const results = await searchYtDlp(query, Math.min(limit, 50));
+  return results.map((r, i) => mapYtDlpToCandidate(r, i));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -110,44 +210,41 @@ function buildStrategyQuery(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Mapping — raw ytmusic-api result → CandidateTrack
+//  Mapping — yt-dlp result → CandidateTrack
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Map a raw ytmusic-api search result to a CandidateTrack.
+ * Map a yt-dlp search result to a CandidateTrack.
  *
- * Handles the various shapes the API may return (videoId vs id,
- * name vs title, duration as number vs string vs undefined).
+ * yt-dlp with `--flat-playlist --dump-json` outputs objects with fields:
+ *   id, title, duration, channel, uploader, view_count, thumbnails, ...
+ */
+function mapYtDlpToCandidate(
+  result: YtDlpSearchResult,
+  position: number,
+): CandidateTrack {
+  return {
+    videoId: result.id || '',
+    title: result.title || '',
+    artist: result.channel || result.uploader || '',
+    duration: Math.round(result.duration ?? 0),
+    channelTitle: result.channel || result.uploader || '',
+    viewCount: result.view_count,
+    thumbnail: result.thumbnails?.[0]?.url || '',
+    nativePosition: position,
+  };
+}
+
+/**
+ * Map a raw API search result to a CandidateTrack.
+ * Kept for backward compatibility — delegates to mapYtDlpToCandidate.
+ * @deprecated Use mapYtDlpToCandidate directly for yt-dlp results.
  */
 export function mapToCandidateTrack(
   result: any,
   position: number,
 ): CandidateTrack {
-  // Duration can be a number, a string like "3:45", or undefined.
-  let duration = 0;
-  if (typeof result.duration === 'number') {
-    duration = Math.round(result.duration);
-  } else if (typeof result.duration === 'string') {
-    // Parse "M:SS" or "MM:SS" or "HH:MM:SS" format
-    const parts = result.duration.split(':').map(Number);
-    if (parts.length === 3) {
-      duration = parts[0] * 3600 + parts[1] * 60 + parts[2];
-    } else if (parts.length === 2) {
-      duration = parts[0] * 60 + parts[1];
-    }
-    duration = Math.round(duration);
-  }
-
-  return {
-    videoId: result.videoId || result.id || '',
-    title: result.name || result.title || '',
-    artist: result.artist?.name || '',
-    duration,
-    channelTitle: result.artist?.name || '',
-    viewCount: undefined,
-    thumbnail: result.thumbnails?.[0]?.url || '',
-    nativePosition: position,
-  };
+  return mapYtDlpToCandidate(result, position);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -178,30 +275,6 @@ export function deduplicateCandidates(
 //  Core YouTube search (single call, external-friendly)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Search YouTube Music with a single query string.
- * Returns mapped and deduplicated candidates. Never throws.
- */
-export async function searchYouTube(
-  query: string,
-  limit: number = 25,
-): Promise<CandidateTrack[]> {
-  if (!query.trim()) return [];
-
-  try {
-    const yt = await getYTMusic();
-    const results = await yt.searchSongs(query);
-    if (!results || !Array.isArray(results)) return [];
-
-    return results.slice(0, limit).map((r: any, i: number) =>
-      mapToCandidateTrack(r, i),
-    );
-  } catch (err) {
-    console.error(`[CandidateProvider] searchYouTube failed for "${query}":`, err);
-    return [];
-  }
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 //  CandidateProvider class
 // ═══════════════════════════════════════════════════════════════════════════
@@ -209,7 +282,7 @@ export async function searchYouTube(
 /**
  * Multi-strategy candidate provider.
  *
- * Searches YouTube Music using multiple query strategies in parallel,
+ * Searches YouTube using multiple query strategies in parallel via yt-dlp,
  * deduplicates by videoId, and returns ranked candidates.
  */
 export class CandidateProvider {
@@ -225,11 +298,11 @@ export class CandidateProvider {
   }
 
   /**
-   * Search YouTube Music with a specific strategy.
+   * Search YouTube with a specific strategy using yt-dlp.
    *
    * @param strategy - Which query strategy to use.
    * @param query    - The search query string (already built by caller).
-   * @param limit    - Max results to request from the API (default 15).
+   * @param limit    - Max results to request (default 15).
    * @returns Array of CandidateTrack, or empty array on error.
    */
   async searchByStrategy(
@@ -240,13 +313,8 @@ export class CandidateProvider {
     if (!query.trim()) return [];
 
     try {
-      const yt = await getYTMusic();
-      const results = await yt.searchSongs(query);
-      if (!results || !Array.isArray(results)) return [];
-
-      return results.slice(0, limit).map((r: any, i: number) =>
-        mapToCandidateTrack(r, i),
-      );
+      const results = await searchYtDlp(query, Math.min(limit, 50));
+      return results.map((r, i) => mapYtDlpToCandidate(r, i));
     } catch (err) {
       console.error(
         `[CandidateProvider] searchByStrategy("${strategy}") failed for "${query}":`,

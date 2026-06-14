@@ -295,21 +295,6 @@ import { trackIdentityEngine } from '../identity/trackIdentityEngine';
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Lazily-initialized ytmusic-api singleton shared by all callers.
- */
-let _ytmusicClient: any = null;
-
-async function getYTMusic(): Promise<any> {
-  if (!_ytmusicClient) {
-    const mod = await import('ytmusic-api');
-    const YTMusic = mod.default;
-    _ytmusicClient = new YTMusic();
-    await _ytmusicClient.initialize();
-  }
-  return _ytmusicClient;
-}
-
-/**
  * In-memory cache for single-track matches to avoid redundant API calls.
  */
 const matchCache = new Map<
