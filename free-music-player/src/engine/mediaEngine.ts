@@ -338,6 +338,8 @@ export class MediaEngine {
         this.resolveAndPlay(this._currentTrack, ++this.playGen);
         return;
       }
+      // Current track has no youtubeId — skip to next playable track
+      this.nextTrack();
       return;
     }
 
@@ -627,6 +629,8 @@ export class MediaEngine {
       this._isPlaying = false;
       this.currentVideoId = null;
       this.emit();
+      // Auto-skip to the next track that has a youtubeId
+      setTimeout(() => this.nextTrack(), 100);
       return;
     }
 
@@ -682,6 +686,13 @@ export class MediaEngine {
             this.nextTrack();
           }
         }, 500);
+      } else {
+        // Circuit breaker tripped — try next track anyway as a last resort
+        setTimeout(() => {
+          if (this._currentTrack?.youtubeId === videoId) {
+            this.nextTrack();
+          }
+        }, 2000);
       }
       return;
     }

@@ -97,7 +97,9 @@ export function registerLibraryHandlers(): void {
    */
   ipcMain.handle('library:prematchAll', async () => {
     const allTracks = db.getAllTracks();
-    const matchable = allTracks.filter(t => t.artist && t.title && t.duration > 0);
+    // Include tracks with duration=0 (e.g. Spotify imports without duration data)
+    // — the identity engine handles unknown duration via DurationClass.UNKNOWN.
+    const matchable = allTracks.filter(t => t.artist && t.title);
     if (matchable.length === 0) return { matched: 0, total: 0, unchanged: 0, failed: 0 };
 
     const tracks = matchable.map(t => ({

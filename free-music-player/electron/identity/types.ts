@@ -97,6 +97,8 @@ export enum DurationClass {
   VERY_CLOSE = 'very_close',
   CLOSE = 'close',
   INVALID = 'invalid',
+  /** Track has no known duration — skip duration-based filtering. */
+  UNKNOWN = 'unknown',
 }
 
 export interface DurationCheck {

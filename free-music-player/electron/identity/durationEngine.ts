@@ -15,6 +15,9 @@ export function classifyDuration(
   localDuration: number,
   candidateDuration: number,
 ): DurationClass {
+  // Unknown duration — pass through without filtering (title/artist matching only)
+  if (!localDuration || localDuration <= 0) return DurationClass.UNKNOWN;
+
   // 1.2% tolerance (floor 2s) — tighter than the old 1.5% but still accounts
   // for real-world encoding/platform variance (±2-3s is common for same track).
   const tolerance = Math.max(2, localDuration * 0.012);
@@ -38,6 +41,7 @@ export function computeDurationScore(durationClass: DurationClass): number {
       return 60; // lowered from 80 — even "very close" should drag confidence
     case DurationClass.CLOSE:
     case DurationClass.INVALID:
+    case DurationClass.UNKNOWN:
       return 0;
   }
 }
@@ -67,9 +71,10 @@ export class DurationEngine {
   }
 
   /**
-   * Filter an array of candidates, keeping ONLY EXACT and VERY_CLOSE
-   * duration matches. CLOSE and INVALID are rejected — if the length
-   * isn't nearly identical, it's the wrong track.
+   * Filter an array of candidates, keeping ONLY EXACT, VERY_CLOSE, and UNKNOWN
+   * duration matches. CLOSE and INVALID are rejected — if the length isn't
+   * nearly identical, it's the wrong track. UNKNOWN (duration=0) passes through
+   * to allow title/artist-only matching for imported tracks without duration.
    */
   filter(localDuration: number, candidates: CandidateTrack[]): ScoredCandidate[] {
     const scored: ScoredCandidate[] = [];

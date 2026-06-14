@@ -193,32 +193,25 @@ export class VerificationEngine {
       };
     }
 
-    // ── Guard: no valid local duration ──
-    if (!localTrack.duration || localTrack.duration <= 0) {
-      return {
-        passed: false,
-        status: 'rejected',
-        confidenceSeparation: 0,
-        reason: 'invalid local duration',
-      };
-    }
-
     // Top candidate (already sorted by confidence descending)
     const top = candidates[0];
 
-    // ── 1. Duration consistency ──
-    const durationConsistent = this.checkDuration(
-      localTrack,
-      top,
-      durationEngine,
-    );
-    if (!durationConsistent) {
-      return {
-        passed: false,
-        status: 'rejected',
-        confidenceSeparation: 0,
-        reason: `duration mismatch: local=${localTrack.duration}s candidate=${top.duration}s`,
-      };
+    // ── 1. Duration consistency (skip when local duration is unknown) ──
+    const hasDuration = localTrack.duration && localTrack.duration > 0;
+    if (hasDuration) {
+      const durationConsistent = this.checkDuration(
+        localTrack,
+        top,
+        durationEngine,
+      );
+      if (!durationConsistent) {
+        return {
+          passed: false,
+          status: 'rejected',
+          confidenceSeparation: 0,
+          reason: `duration mismatch: local=${localTrack.duration}s candidate=${top.duration}s`,
+        };
+      }
     }
 
     // ── 2. Artist consistency ──

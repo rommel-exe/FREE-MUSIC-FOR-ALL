@@ -21,7 +21,7 @@
 import { createServer } from 'node:http';
 import { net } from 'electron';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { execFile } from 'node:child_process';
+import { execFile, execSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -35,6 +35,56 @@ const execFileAsync = promisify(execFile);
 const YTDLP_PATH =
   '/Library/Frameworks/Python.framework/Versions/3.12/bin/yt-dlp';
 const CACHE_TTL_MS = 55 * 60 * 1000;
+
+// ─── JS runtime detection for yt-dlp ─────────────────────────────────
+
+/**
+ * Find a JavaScript runtime for yt-dlp to use during format extraction.
+ * YouTube extraction is more reliable when a JS runtime (node, bun, deno)
+ * is available for signature deciphering.
+ *
+ * Returns `--js-runtimes node:<path>` if node is found, or empty array.
+ */
+let jsRuntimeArgs: readonly string[] | null = null;
+
+function detectJsRuntime(): readonly string[] {
+  // Try common node.js locations
+  const candidates = [
+    process.env.NODE_PATH,
+    process.env.NVM_BIN ? `${process.env.NVM_BIN}/node` : null,
+    '/usr/local/bin/node',
+    '/opt/homebrew/bin/node',
+    '/usr/bin/node',
+  ].filter(Boolean) as string[];
+
+  // Also try `which node` in case it's on the PATH
+  try {
+    const which = execSync('which node', { encoding: 'utf-8', timeout: 2000 }).trim();
+    if (which && !candidates.includes(which)) candidates.unshift(which);
+  } catch {
+    // node not found via which
+  }
+
+  for (const nodePath of candidates) {
+    try {
+      fs.accessSync(nodePath, fs.constants.X_OK);
+      console.log(`[MediaResolver] Found JS runtime: ${nodePath}`);
+      return ['--js-runtimes', `node:${nodePath}`];
+    } catch {
+      continue;
+    }
+  }
+
+  console.warn('[MediaResolver] No JS runtime found — format extraction may be limited');
+  return [];
+}
+
+function getJsRuntimeArgs(): readonly string[] {
+  if (jsRuntimeArgs === null) {
+    jsRuntimeArgs = detectJsRuntime();
+  }
+  return jsRuntimeArgs;
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -497,6 +547,7 @@ class MediaResolver {
           '-f',
           'bestaudio[ext=m4a][abr>64]/bestaudio[abr>64]/bestaudio',
           '--no-warnings',
+          ...getJsRuntimeArgs(),
           `https://www.youtube.com/watch?v=${videoId}`,
         ],
         { timeout: 15_000 },
@@ -597,6 +648,7 @@ class MediaResolver {
           '-f',
           'bestaudio[ext=m4a][abr>64]/bestaudio[abr>64]/bestaudio',
           '--no-warnings',
+          ...getJsRuntimeArgs(),
           `https://www.youtube.com/watch?v=${videoId}`,
         ],
         { timeout: 15_000 },
