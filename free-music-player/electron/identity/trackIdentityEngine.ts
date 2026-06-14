@@ -253,49 +253,53 @@ export class TrackIdentityEngine {
       return result;
     }
 
-    // Step 6: Compute trust-weighted canonical duration from candidates
-    // YouTube's search results provide a cross-check against wrong source metadata
-    // (e.g., Spotify reporting 3:43 for a track whose official version is 2:40).
-    const canonicalDuration = this.computeTrustWeightedDuration(deduped);
+    // Step 6: Reject duration outliers via density clustering
+    // Finds the dominant duration cluster in the candidate pool and removes
+    // candidates that are clearly outside it (wrong song, extended version, etc.).
+    // This is a PRE-FILTER — it narrows the pool but does NOT replace the
+    // source metadata duration used for the downstream DurationEngine.
+    const clusterCenter = this.computeDominantDurationCluster(deduped);
+    let durationFiltered: CandidateTrack[] = deduped;
 
-    // Use canonical as primary filter when it's reliable and local duration is
-    // either unknown (0) or clearly wrong (differs by >15% or 10s from consensus).
-    let filterDuration = normalizedTrack.duration;
-    if (canonicalDuration > 0) {
-      if (normalizedTrack.duration <= 0) {
-        console.log(
-          `[TrackIdentityEngine] Using canonical duration ${canonicalDuration}s (local duration unknown) for "${normalizedTrack.titleCanonical}"`
-        );
-        filterDuration = canonicalDuration;
-      } else {
-        const diffThreshold = Math.max(10, normalizedTrack.duration * 0.15);
-        const diff = Math.abs(normalizedTrack.duration - canonicalDuration);
-        if (diff > diffThreshold) {
-          console.warn(
-            `[TrackIdentityEngine] Local duration ${normalizedTrack.duration}s differs from YouTube consensus ${canonicalDuration}s (Δ${diff}s) for "${normalizedTrack.titleCanonical}" — using canonical duration`
+    if (clusterCenter > 0) {
+      const tolerance = Math.max(25, clusterCenter * 0.2);
+      const kept = deduped.filter(c => {
+        if (c.duration <= 0) return true; // keep unknown durations
+        return Math.abs(c.duration - clusterCenter) <= tolerance;
+      });
+      if (kept.length > 0) {
+        durationFiltered = kept;
+        if (kept.length < deduped.length) {
+          console.log(
+            `[TrackIdentityEngine] Duration outlier rejection: kept ${kept.length}/${deduped.length} ` +
+            `candidates within ${tolerance.toFixed(0)}s of cluster center ${clusterCenter}s ` +
+            `for "${normalizedTrack.titleCanonical}"`
           );
-          filterDuration = canonicalDuration;
         }
       }
     }
 
     // Step 7: Filter by duration (removes INVALID candidates)
+    // Uses SOURCE duration (not cluster center). The cluster center was
+    // only used for outlier rejection above — the existing DurationEngine
+    // pipeline remains unchanged.
     let scoredCandidates: ScoredCandidate[];
     try {
       scoredCandidates = this.durationEngine.filter(
-        filterDuration,
-        deduped,
+        normalizedTrack.duration,
+        durationFiltered,
       );
     } catch (err) {
       console.error('[TrackIdentityEngine] duration filter failed:', err);
       scoredCandidates = [];
     }
 
-    // Fallback: retry with local duration if canonical produced nothing
-    if (scoredCandidates.length === 0 && filterDuration !== normalizedTrack.duration) {
+    // Fallback: retry with ALL deduped candidates if outlier-filtered pool
+    // is too restrictive
+    if (scoredCandidates.length === 0 && durationFiltered !== deduped) {
       console.warn(
-        `[TrackIdentityEngine] Canonical duration ${filterDuration}s produced no candidates ` +
-        `for "${normalizedTrack.titleCanonical}" — falling back to local ${normalizedTrack.duration}s`
+        `[TrackIdentityEngine] Outlier-filtered pool (${durationFiltered.length}) produced no ` +
+        `candidates for "${normalizedTrack.titleCanonical}" — falling back to all ${deduped.length}`
       );
       try {
         scoredCandidates = this.durationEngine.filter(normalizedTrack.duration, deduped);
@@ -690,36 +694,43 @@ export class TrackIdentityEngine {
       return this.buildEmptyResult(track, 'No candidates found');
     }
 
-    // Step 3: Compute trust-weighted canonical duration from candidates
-    const canonicalDuration = this.computeTrustWeightedDuration(deduped);
-    let filterDuration = normalizedTrack.duration;
-    if (canonicalDuration > 0) {
-      if (normalizedTrack.duration <= 0) {
-        filterDuration = canonicalDuration;
-      } else {
-        const diffThreshold = Math.max(10, normalizedTrack.duration * 0.15);
-        if (Math.abs(normalizedTrack.duration - canonicalDuration) > diffThreshold) {
-          console.warn(
-            `[TrackIdentityEngine] rematch: local duration ${normalizedTrack.duration}s vs YouTube consensus ${canonicalDuration}s for "${normalizedTrack.titleCanonical}" — using canonical`
+    // Step 3: Reject duration outliers via density clustering
+    const clusterCenter = this.computeDominantDurationCluster(deduped);
+    let durationFiltered: CandidateTrack[] = deduped;
+
+    if (clusterCenter > 0) {
+      const tolerance = Math.max(25, clusterCenter * 0.2);
+      const kept = deduped.filter(c => {
+        if (c.duration <= 0) return true;
+        return Math.abs(c.duration - clusterCenter) <= tolerance;
+      });
+      if (kept.length > 0) {
+        durationFiltered = kept;
+        if (kept.length < deduped.length) {
+          console.log(
+            `[TrackIdentityEngine] rematch: kept ${kept.length}/${deduped.length} within ` +
+            `${tolerance.toFixed(0)}s of cluster ${clusterCenter}s for "${normalizedTrack.titleCanonical}"`
           );
-          filterDuration = canonicalDuration;
         }
       }
     }
 
-    // Step 4: Filter by duration
+    // Step 4: Filter by duration (removes INVALID candidates)
+    // Uses SOURCE duration, not cluster center. The cluster center was only
+    // used for outlier rejection above.
     let scoredCandidates: ScoredCandidate[];
     try {
       scoredCandidates = this.durationEngine.filter(
-        filterDuration,
-        deduped,
+        normalizedTrack.duration,
+        durationFiltered,
       );
     } catch {
       scoredCandidates = [];
     }
 
-    // Fallback: retry with local duration if canonical produced nothing
-    if (scoredCandidates.length === 0 && filterDuration !== normalizedTrack.duration) {
+    // Fallback: retry with ALL deduped candidates if outlier-filtered pool
+    // is too restrictive
+    if (scoredCandidates.length === 0 && durationFiltered !== deduped) {
       try {
         scoredCandidates = this.durationEngine.filter(normalizedTrack.duration, deduped);
       } catch {
@@ -1042,29 +1053,21 @@ export class TrackIdentityEngine {
   // ── Private Helpers ─────────────────────────────────────────────
 
   /**
-   * Compute a canonical duration from the candidate pool using density-based
-   * clustering.
+   * Find the dominant duration cluster center among candidates.
    *
-   * Unlike the trust-based scoring used for final ranking (which penalizes
-   * remixes/covers/etc.), this method considers ALL candidates regardless of
-   * remix status. If the TRACK ITSELF is a remix, every legitimate YouTube
-   * result will contain "remix" and trust-based filtering would reject them
-   * all, producing no consensus.
+   * Uses density-based clustering: for each candidate duration, counts
+   * neighbors within a 10-second window. Returns the duration with the
+   * densest neighborhood (tie-break: shorter).
    *
-   * Approach:
-   *  1. Collect all candidate durations (filtering out implausible outliers).
-   *  2. Remove extreme outliers (>50% from median).
-   *  3. For each remaining duration, count neighbors within a 10-second
-   *     window (density estimation / mean-shift style).
-   *  4. Return the duration with the densest neighborhood (tie-break: shorter).
+   * This is NOT a replacement for trust scoring — it's a pre-filter to
+   * reject obvious outliers (e.g., a 3:42 upload when everyone else is
+   * 2:41). It considers ALL candidates regardless of remix/cover status
+   * because if the TRACK ITSELF is a remix, every legitimate YouTube
+   * result will also be a remix.
    *
-   * This works for both ordinary tracks (most results cluster around the
-   * official duration) and remix tracks (where all results are remixes but
-   * still cluster around the canonical length).
-   *
-   * Returns 0 if no reasonable consensus can be determined.
+   * Returns 0 if no reasonable cluster can be determined.
    */
-  private computeTrustWeightedDuration(candidates: CandidateTrack[]): number {
+  private computeDominantDurationCluster(candidates: CandidateTrack[]): number {
     // Step 1: collect plausible durations (10s–1hr range)
     const durations = candidates
       .map(c => Math.round(c.duration))
