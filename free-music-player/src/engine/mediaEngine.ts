@@ -111,6 +111,10 @@ export class MediaEngine {
   /** Prevents stacked nextTrack()/previousTrack() calls from rapid error handling. */
   private _navigationInFlight = false;
 
+  /** Tracks retry count per videoId for audio load/recovery. */
+  private _retryCounts = new Map<string, number>();
+  private readonly MAX_AUDIO_RETRIES = 2;
+
   constructor() {
     this.audio = new AudioService();
     this.setupAudioCallbacks();
@@ -225,31 +229,52 @@ export class MediaEngine {
         this._isLoading = false;
         this.emit();
 
+        const errorVideoId = this.currentVideoId;
+        if (!errorVideoId) return;
+
+        // SRC_NOT_SUPPORTED (4) — URL is permanently dead, skip immediately
+        if (errorCode === 4) {
+          setTimeout(() => {
+            if (this.currentVideoId === errorVideoId) {
+              this._retryCounts.delete(errorVideoId);
+              this.nextTrack();
+            }
+          }, 500);
+          return;
+        }
+
+        // Retryable errors (NETWORK=2, DECODE=3) — retry the current track
+        const retryCount = this._retryCounts.get(errorVideoId) ?? 0;
+        if (retryCount < this.MAX_AUDIO_RETRIES) {
+          this._retryCounts.set(errorVideoId, retryCount + 1);
+          const delay = 2000 * (retryCount + 1); // 2s, 4s backoff
+          console.log(`[MediaEngine] Audio error, retrying track (attempt ${retryCount + 1}/${this.MAX_AUDIO_RETRIES})`);
+
+          setTimeout(() => {
+            if (this.currentVideoId === errorVideoId && this._currentTrack) {
+              this._isLoading = true;
+              this.emit();
+              // Clear cached source so we get a fresh URL from the resolver
+              prefetchEngine.clearSource(errorVideoId);
+              this.resolveAndPlay(this._currentTrack, this.playGen);
+            }
+          }, delay);
+          return;
+        }
+
+        // All retries exhausted — skip to next track
+        console.warn('[MediaEngine] All retries exhausted for track, skipping');
         const now = Date.now();
         if (now - this.errorWindow > CIRCUIT_BREAKER_WINDOW_MS) this.errorCount = 0;
         this.errorWindow = now;
         this.errorCount++;
 
-        if (this.errorCount > CIRCUIT_BREAKER_THRESHOLD) {
-          console.error('[MediaEngine] Circuit breaker tripped');
-          this._isLoading = false;
-          this.emit();
-          return;
-        }
-
-        // Capture currentVideoId at error time — prevents race where
-        // user clicks a new track before the timeout fires, causing
-        // nextTrack() to be called on the wrong track.
-        // Network (2) and Decode (3) errors are often transient — wait longer.
-        // SRC_NOT_SUPPORTED (4) means the URL is dead — skip faster.
-        const errorVideoId = this.currentVideoId;
-        const delay = (errorCode === 2 || errorCode === 3) ? 3000 : 500;
-
         setTimeout(() => {
           if (this.currentVideoId === errorVideoId) {
+            this._retryCounts.delete(errorVideoId);
             this.nextTrack();
           }
-        }, delay);
+        }, 500);
       },
 
       onWaiting: () => {
@@ -608,6 +633,9 @@ export class MediaEngine {
   // ===================================================================
 
   private playTrackInternal(track: Track, gen: number): void {
+    // Clear retry counts for any previous track
+    this._retryCounts.clear();
+
     this.currentVideoId = track.youtubeId ?? null;
     this._currentTrack = track;
     this._progress = 0;
@@ -702,6 +730,26 @@ export class MediaEngine {
 
     if (!source) {
       console.error('[MediaEngine] Failed to resolve media for:', videoId);
+
+      // Retry resolution with backoff before giving up
+      const retryCount = this._retryCounts.get(videoId) ?? 0;
+      if (retryCount < this.MAX_AUDIO_RETRIES) {
+        this._retryCounts.set(videoId, retryCount + 1);
+        const delay = 2000 * (retryCount + 1); // 2s, 4s backoff
+        console.log(`[MediaEngine] Retrying resolution (attempt ${retryCount + 1}/${this.MAX_AUDIO_RETRIES})`);
+
+        setTimeout(() => {
+          if (this.currentVideoId === videoId) {
+            this._isLoading = true;
+            this.emit();
+            this.resolveAndPlay(track, gen);
+          }
+        }, delay);
+        return;
+      }
+
+      // All retries exhausted — give up and skip
+      console.warn('[MediaEngine] All resolution retries exhausted, skipping');
       this._isLoading = false;
       this._isPlaying = false;
       this.emit();
@@ -711,20 +759,12 @@ export class MediaEngine {
       this.errorWindow = now;
       this.errorCount++;
 
-      if (this.errorCount <= CIRCUIT_BREAKER_THRESHOLD) {
-        setTimeout(() => {
-          if (this._currentTrack?.youtubeId === videoId) {
-            this.nextTrack();
-          }
-        }, 500);
-      } else {
-        // Circuit breaker tripped — try next track anyway as a last resort
-        setTimeout(() => {
-          if (this._currentTrack?.youtubeId === videoId) {
-            this.nextTrack();
-          }
-        }, 2000);
-      }
+      setTimeout(() => {
+        if (this._currentTrack?.youtubeId === videoId) {
+          this._retryCounts.delete(videoId);
+          this.nextTrack();
+        }
+      }, 500);
       return;
     }
 

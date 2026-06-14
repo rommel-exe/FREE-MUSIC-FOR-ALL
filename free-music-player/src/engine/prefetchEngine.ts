@@ -197,6 +197,13 @@ export class PrefetchEngine {
   }
 
   /**
+   * Remove a cached source for a videoId (used to force re-resolution on retry).
+   */
+  clearSource(videoId: string): void {
+    this.cache.delete(videoId);
+  }
+
+  /**
    * Check if a videoId already has a cached entry (resolved or pending).
    */
   has(videoId: string): boolean {
