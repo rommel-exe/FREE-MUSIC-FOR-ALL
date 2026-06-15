@@ -19,6 +19,7 @@ import type {
   VerificationResult,
 } from './types';
 import { VersionClass } from './types';
+import { detectVersionFromTitle } from './versionEngine';
 
 // ── Constants ──────────────────────────────────────────────────────
 
@@ -233,6 +234,7 @@ export class VerificationEngine {
     const versionConsistent = this.checkVersion(
       top,
       versionEngine,
+      localTrack.title,
     );
     if (!versionConsistent) {
       return {
@@ -372,15 +374,27 @@ export class VerificationEngine {
 
   /**
    * Check version compatibility, preferring versionEngine when available.
+   *
+   * @param candidate     - The scored candidate with a detected versionClass.
+   * @param versionEngine - VersionEngine instance (must expose `check()`).
+   * @param localTitle    - Optional local track title for local version detection.
+   *                        If omitted, defaults to STUDIO.
    */
   private checkVersion(
     candidate: ScoredCandidate,
     versionEngine: any,
+    localTitle?: string,
   ): boolean {
     // Try engine first
     if (versionEngine && typeof versionEngine.check === 'function') {
       try {
+        // Detect the local version from the track title, defaulting to STUDIO
+        const localVersion = localTitle
+          ? detectVersionFromTitle(localTitle)
+          : VersionClass.STUDIO;
+
         const result = versionEngine.check(
+          localVersion,
           candidate.versionClass,
         );
         // Engine may return a boolean or a VersionMatchResult

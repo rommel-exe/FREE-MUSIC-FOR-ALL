@@ -99,9 +99,11 @@ export const COMPATIBILITY_MATRIX: Record<VersionClass, Record<VersionClass, boo
     matrix[VersionClass.REMASTER][VersionClass.STUDIO] = true;
     matrix[VersionClass.REMASTER][VersionClass.REMASTER] = true;
 
-    // UNKNOWN is compatible with STUDIO (no info to reject)
-    matrix[VersionClass.UNKNOWN][VersionClass.STUDIO] = true;
-    matrix[VersionClass.UNKNOWN][VersionClass.UNKNOWN] = true;
+    // UNKNOWN is compatible with everything (no info to reject)
+    for (const v of Object.values(VersionClass)) {
+      matrix[VersionClass.UNKNOWN][v] = true;
+      matrix[v][VersionClass.UNKNOWN] = true;
+    }
 
     // LIVE ↔ LIVE, ACOUSTIC ↔ ACOUSTIC, REMIX ↔ REMIX, etc.
     for (const v of Object.values(VersionClass)) {
