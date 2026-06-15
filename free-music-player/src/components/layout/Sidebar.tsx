@@ -13,8 +13,10 @@ import {
   ListMusic,
   Download,
   Trash2,
+  RefreshCw,
 } from 'lucide-react';
 import { ipc } from '@/utils/ipc';
+import { useUpdateStore } from '@/store/updateStore';
 import type { Track } from '@/types';
 
 /* ─── Navigation ─────────────────────────────────────────────────────── */
@@ -196,8 +198,8 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* ── Import Button ── */}
-      <div className="p-3 border-t border-groove-500/30 no-drag">
+      {/* ── Footer Buttons ── */}
+      <div className="p-3 border-t border-groove-500/30 no-drag space-y-2">
         <button
           onClick={() => openModal('import')}
           className="
@@ -213,6 +215,23 @@ export function Sidebar() {
         >
           <Plus className="w-3.5 h-3.5 text-emerald" strokeWidth={2} />
           Import playlist
+        </button>
+
+        <button
+          onClick={() => useUpdateStore.getState().checkForUpdates()}
+          className="
+            w-full flex items-center justify-center gap-2
+            py-2 px-3 rounded-radius-sm
+            bg-groove-700/50 hover:bg-groove-600/80
+            border border-groove-500/20 hover:border-groove-500/40
+            text-mac-body text-groove-400 hover:text-groove-200
+            transition-all duration-200
+            active:scale-[0.98]
+          "
+          type="button"
+        >
+          <RefreshCw className="w-3.5 h-3.5 text-groove-400" strokeWidth={2} />
+          Check for updates
         </button>
       </div>
     </aside>

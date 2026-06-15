@@ -33,6 +33,7 @@ export function UpdateBanner() {
     (status === 'checking' ||
       status === 'downloading' ||
       status === 'downloaded' ||
+      status === 'available' ||
       status === 'error');
 
   const showProgress = status === 'downloading';
