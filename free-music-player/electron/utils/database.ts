@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { app } from 'electron';
 import type { Track, Playlist, PlaylistTrack, QueueItem, Settings, RecentlyPlayed, Favorite } from './types';
+import { emitTrace } from './trace';
 
 let db: Database.Database | null = null;
 
@@ -192,7 +193,11 @@ export function getDb(): Database.Database {
 // ─── Tracks ─────────────────────────────────────────────────────────────
 
 export function getAllTracks(): Track[] {
-  return mapTracks(getDb().prepare('SELECT * FROM tracks ORDER BY created_at DESC').all());
+  const rows = mapTracks(getDb().prepare('SELECT * FROM tracks ORDER BY created_at DESC').all());
+  for (const t of rows) {
+    emitTrace(t.title, t.artist, 'DB_READ', { duration: t.duration });
+  }
+  return rows;
 }
 
 /** Get all tracks that don't have a YouTube ID yet (e.g. imported from Spotify). */
@@ -207,6 +212,8 @@ export function getTrackById(id: string): Track | undefined {
 }
 
 export function addTrack(track: Omit<Track, 'created_at' | 'updated_at'>): Track {
+  emitTrace(track.title, track.artist, 'DB_INSERT', { duration: track.duration });
+
   const now = new Date().toISOString();
   getDb().prepare(
     `INSERT INTO tracks (id, title, artist, album, duration, path, thumbnail, youtube_id, source, play_count, created_at, updated_at)

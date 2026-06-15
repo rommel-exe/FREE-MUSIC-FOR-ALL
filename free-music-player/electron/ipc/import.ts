@@ -8,6 +8,7 @@ import { resolveBatchYoutubeIds } from '../utils/searchMatching';
 import * as db from '../utils/database';
 import { validate, IdSchema } from '../utils/validate';
 import { z } from 'zod';
+import { emitTrace } from '../utils/trace';
 
 function generateId(): string {
   try {
@@ -49,6 +50,15 @@ async function importAsPlaylist(
     source = await importYouTubePlaylist(trimmed);
   } else {
     source = await importSpotifyPlaylist(trimmed);
+
+    // Register trace IDs for every track before resolution
+    for (const t of source.tracks) {
+      emitTrace(t.title, t.artist, 'IMPORT', {
+        duration: t.duration,
+        sourceUrl: trimmed,
+      });
+    }
+
     // --- 1b. Resolve every Spotify track to its exact-duration YouTube match ---
     source.tracks = await resolveBatchYoutubeIds(source.tracks);
   }

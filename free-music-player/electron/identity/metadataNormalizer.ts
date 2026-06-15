@@ -1,4 +1,5 @@
 import type { TrackInput, NormalizedTrack } from './types';
+import { emitTrace } from '../utils/trace';
 
 // ── Pure Helper Functions ─────────────────────────────────────────
 
@@ -197,7 +198,8 @@ export function stripNoiseWords(text: string): string {
         }
       }
 
-      return ' ';
+      // Keep the content — it's not noise, it's part of the title
+      return match;
     });
   }
 
@@ -337,9 +339,16 @@ export function normalizeTitle(title: string): string {
  */
 export class MetadataNormalizer {
   normalize(input: TrackInput): NormalizedTrack {
+    emitTrace(input.title, input.artist, 'NORMALIZE_BEFORE');
+
     const titleCanonical = normalizeTitle(input.title);
     const artistCanonical = normalizeArtist(input.artist);
     const albumCanonical = input.album ? normalizeTitle(input.album) : undefined;
+
+    emitTrace(input.title, input.artist, 'NORMALIZE_AFTER', {
+      normalizedTitle: titleCanonical,
+      normalizedArtist: artistCanonical,
+    });
 
     return {
       titleCanonical,

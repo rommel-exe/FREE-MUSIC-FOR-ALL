@@ -289,6 +289,7 @@ export function computeMultiFactorScore(params: {
 }
 
 import { trackIdentityEngine } from '../identity/trackIdentityEngine';
+import { emitTrace } from './trace';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  UNIFIED YOUTUBE MATCHING ENGINE (delegates to TrackIdentityEngine)
@@ -379,6 +380,10 @@ export async function resolveBatchYoutubeIds(
   const needsMatch = tracks.filter(t => !t.youtubeId);
   if (needsMatch.length === 0) {
     return tracks.map(t => ({ ...t, thumbnail: t.thumbnail || '' }));
+  }
+
+  for (const t of needsMatch) {
+    emitTrace(t.title, t.artist, 'SPOTIFY_IMPORT', { duration: t.duration });
   }
 
   const results = await trackIdentityEngine.batchIdentify(

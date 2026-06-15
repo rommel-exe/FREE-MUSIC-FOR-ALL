@@ -4,6 +4,7 @@ import type { Track } from '../utils/types';
 import { validate, IdSchema, TrackSchema } from '../utils/validate';
 import { resolveBatchYoutubeIds } from '../utils/searchMatching';
 import { trackIdentityEngine } from '../identity/trackIdentityEngine';
+import { emitTrace } from '../utils/trace';
 
 function generateId(): string {
   try { return crypto.randomUUID(); } catch { return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`; }
@@ -17,6 +18,7 @@ export function registerLibraryHandlers(): void {
   ipcMain.handle('library:addTrack', (_event, track: any) => {
     try {
       const data = validate(TrackSchema, track ?? {}, 'track');
+      emitTrace(data.title, data.artist, 'IMPORT', { duration: data.duration, source: 'library:addTrack' });
       // Use youtubeId as the track ID when adding from YouTube search so
       // that recently-played tracking (which uses track.id) works consistently.
       const id = data.id || data.youtubeId || data.youtube_id || generateId();
@@ -110,6 +112,14 @@ export function registerLibraryHandlers(): void {
       duration: t.duration,
       thumbnail: t.thumbnail,
     }));
+
+    // Emit prematch trace for every track entering the identity engine
+    for (const t of tracks) {
+      emitTrace(t.title, t.artist, 'PREMATCH_START', {
+        duration: t.duration,
+        existingYoutubeId: t.oldYoutubeId || null,
+      });
+    }
 
     console.log(`[Library] Pre-matching ${tracks.length} tracks through TrackIdentityEngine...`);
 

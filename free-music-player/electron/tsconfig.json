@@ -18,6 +18,7 @@
     "preload.ts",
     "ipc/**/*.ts",
     "services/**/*.ts",
-    "utils/**/*.ts"
+    "utils/**/*.ts",
+    "identity/**/*.ts"
   ]
 }

@@ -31,6 +31,7 @@ import type {
 } from './types';
 import { DurationClass, VersionClass, CONFIDENCE_THRESHOLDS, DEFAULT_OPTIONS } from './types';
 import { classifyScore } from './confidenceEngine';
+import { emitTrace } from '../utils/trace';
 
 import { MetadataNormalizer } from './metadataNormalizer';
 import { FingerprintGenerator } from './fingerprintGenerator';
@@ -159,6 +160,10 @@ export class TrackIdentityEngine {
   async identify(track: TrackInput): Promise<MatchResult> {
     this.ensureInitialized();
 
+    emitTrace(track.title, track.artist, 'IDENTITY_INPUT', {
+      duration: track.duration,
+    });
+
     // Step 1: Normalize metadata
     let normalizedTrack: NormalizedTrack;
     try {
@@ -245,6 +250,16 @@ export class TrackIdentityEngine {
       }
     }
 
+    emitTrace(track.title, track.artist, 'CANDIDATES', {
+      count: deduped.length,
+      candidates: deduped.slice(0, 20).map(c => ({
+        videoId: c.videoId,
+        title: c.title,
+        artist: c.artist,
+        duration: c.duration,
+      })),
+    });
+
     if (deduped.length === 0) {
       const result = this.buildEmptyResult(track, 'No candidates found');
       if (this.options.enableCache) {
@@ -307,6 +322,10 @@ export class TrackIdentityEngine {
         scoredCandidates = [];
       }
     }
+
+    emitTrace(track.title, track.artist, 'AFTER_DURATION', {
+      count: scoredCandidates.length,
+    });
 
     if (scoredCandidates.length === 0) {
       const result = this.buildEmptyResult(track, 'All candidates failed duration check');
@@ -453,6 +472,16 @@ export class TrackIdentityEngine {
       matchedAt: Date.now(),
       fromCache: false,
     };
+
+    if (bestCandidate) {
+      emitTrace(track.title, track.artist, 'WINNER', {
+        videoId: bestCandidate.videoId,
+        candidateTitle: bestCandidate.title,
+        candidateArtist: bestCandidate.artist,
+        candidateDuration: bestCandidate.duration,
+        score: bestCandidate.confidence,
+      });
+    }
 
     // Store in persistent store
     try {
